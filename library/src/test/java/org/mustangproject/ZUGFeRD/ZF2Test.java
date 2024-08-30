@@ -241,7 +241,7 @@ public class ZF2Test extends MustangReaderTestCase {
 		try {
 			assertEquals(zi.getVersion(), 2);
 		} catch (final Exception e) {
-			// TODO Auto-generated catch block
+			// TCalODO Auto-generated catch block
 			e.printStackTrace();
 		}
 	}	/**
