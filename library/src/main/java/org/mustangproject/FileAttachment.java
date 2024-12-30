@@ -1,5 +1,10 @@
 package org.mustangproject;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+@JsonInclude(JsonInclude.Include.NON_EMPTY)
 public class FileAttachment {
 
 	protected String filename;
@@ -21,7 +26,7 @@ public class FileAttachment {
 		this.mimetype = mimetype;
 		this.relation = relation;
 		this.data = data;
-		description = "Additional file attachment";
+		this.description = "Additional file attachment";
 	}
 
 	public String getDescription() {
@@ -68,8 +73,4 @@ public class FileAttachment {
 		this.data = data;
 		return this;
 	}
-
-
-
-
 }

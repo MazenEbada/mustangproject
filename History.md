@@ -1,3 +1,35 @@
+
+2.15.2
+=======
+2024-12-19
+- correcly write charge reason codes also for non-Xrechnung #617
+- correctly import additional referenced documents into invoice/corrected setting of attachments from jackson
+- corrected parseException structure
+- allow 1p0 as potential xmp version number
+- #618 import BT-20
+- #599 add tax category code for free export
+- #600 Fixes a problem where a stream was not safely closed
+
+2.15.1
+=======
+2024-12-07
+- #566 Failed to parse PDF - Could not reproduce the invoice
+- closes #579 prepaidamount is only read in UBL
+- #581 parse lineTotalAmount, TaxBasisAmount, duePayableAmount
+- #576 read lineid, #578 set lineid
+- log error ids, be able to access them from context
+- #503 import more ubl
+- allow jackson to run over more classes, e.g., DirectDebit, bean contructor for direct debit
+- allow json in document includedNotes and 
+- #591 Import IncludedNotes also on item level
+- #595 Treat all fatal XR schematron rules as errors, not as warnings.
+- #577 dom4j: exclude all (optional) dependencies to avoid potential conflicts.
+- #575 Fix compilation problems.
+- #573 Feature/category code
+- #601 exceptions in metrics
+- #606 also parse BT-25
+
+
 2.15.0
 =======
 2024-11-18
