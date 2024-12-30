@@ -95,6 +95,7 @@
 
     </dependencies>
     <build>
+    	<finalName>Mustang-CLI</finalName>
         <pluginManagement>
             <plugins>
                 <plugin>

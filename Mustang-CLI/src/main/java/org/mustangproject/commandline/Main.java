@@ -331,6 +331,56 @@ public class Main {
 	 */
 	public static void main(String[] args) {
 		try {
+			
+
+			//MEB: Custom Actions
+			// ..................................................................
+	    	// Check if a custom action is specified
+	        if (args.length >= 2 && args[0].equalsIgnoreCase("--custom-action")) {
+	        	String returnString = null;
+	            switch (args[1].toUpperCase()) {
+	                case "GENERATE_FROM_XML":
+	                	// Check if the caller provided a temp file path
+	    	            String tempFilePath = null;
+	    	            for (int i = 0; i < args.length - 1; i++) {
+	    	                if (args[i].equalsIgnoreCase("--temp-output-file")) {
+	    	                	tempFilePath = args[i + 1];
+	    	                    break;
+	    	                }
+	    	            }
+	                	returnString = APplusActions.handleGenerateFromXML(args,tempFilePath);
+	                	break;
+	                default:
+	                    System.err.println("Error: Unknown custom action '" + args[1] + "'");
+	                    System.exit(1);
+	            }
+	            // Check if the caller provided a temp file path
+	            String outputFilePath = null;
+	            for (int i = 0; i < args.length - 1; i++) {
+	                if (args[i].equalsIgnoreCase("--output-file")) {
+	                    outputFilePath = args[i + 1];
+	                    break;
+	                }
+	            }
+
+	            if (returnString != null && outputFilePath != null) {
+	                File outputFile = new File(outputFilePath);
+
+	                // Write the result to the provided file
+	                try (FileWriter writer = new FileWriter(outputFile)) {
+	                    writer.write(returnString);
+	                }
+
+	                System.out.println("Successfully wrote output to: " + outputFilePath);
+	            } else if (returnString != null) {
+	                System.err.println("No output file provided. Use --output-file <path> to specify an output file.");
+	            }
+
+	            return;
+	        }
+	        
+	        //..................................................................
+	        
 			CommandLine cmd;
 			CommandLineParser parser = new DefaultParser();
 
@@ -446,9 +496,8 @@ public class Main {
 		} catch (Exception e) {
 			if (LOGGER != null) {
 				LOGGER.error(e.getMessage(), e);
-			} else {
-				System.err.println(e.getMessage());
 			}
+			e.printStackTrace();
 			System.exit(-1);
 		}
 
