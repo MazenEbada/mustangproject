@@ -15,6 +15,7 @@ public class APplusInterface {
 		String erechnungXML = null;
 		String xmlContent = APplusIncomingXMLParser.getFriendlyXML(rechnungDetails,conversionKeys);
 
+		// FOR TESTING PURPOSE ONLY! 
 		if (tempOutputFile != null) {
 			File outputFile = new File(tempOutputFile);
 	
@@ -22,8 +23,6 @@ public class APplusInterface {
 	        try (FileWriter writer = new FileWriter(outputFile)) {
 	            writer.write(xmlContent);
 	        }
-
-	        System.out.println("Successfully wrote output to: " + tempOutputFile);
 		}
         APplusIncomingXMLProcessor processer = new APplusIncomingXMLProcessor(xmlContent, conversionKeys);
         processer.process();

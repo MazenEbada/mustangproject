@@ -373,9 +373,9 @@ public class Main {
 	                    writer.write(returnString);
 	                }
 
-	                System.out.println("Successfully wrote output to: " + outputFilePath);
+	                //System.out.println("Successfully wrote output to: " + outputFilePath);
 	            } else if (returnString != null) {
-	                System.err.println("No output file provided. Use --output-file <path> to specify an output file.");
+	                //System.err.println("No output file provided. Use --output-file <path> to specify an output file.");
 	            }
 
 	            return;

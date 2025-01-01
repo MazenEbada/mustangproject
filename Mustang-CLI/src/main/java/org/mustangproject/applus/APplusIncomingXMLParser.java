@@ -253,6 +253,8 @@ public class APplusIncomingXMLParser {
 	    data.put("IHREBESTELLUNG", getElementValue(rechnungElement, "IHREBESTELLUNG"));
 	    data.put("BESTELLDATUM", getElementValue(rechnungElement, "BESTELLDATUM"));
 	    data.put("URRECHNUNG", getElementValue(rechnungElement, "URRECHNUNG"));
+	    data.put("AUFTRAG", getElementValue(rechnungElement, "AUFTRAG"));
+	    data.put("SPRACHE", getElementValue(rechnungElement, "SPRACHE"));
 
 	    return data;
 	}

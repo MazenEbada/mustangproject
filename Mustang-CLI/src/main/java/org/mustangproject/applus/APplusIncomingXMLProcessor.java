@@ -2,12 +2,10 @@ package org.mustangproject.applus;
 
 import org.mustangproject.Allowance;
 import org.mustangproject.BankDetails;
-import org.mustangproject.CashDiscount;
 import org.mustangproject.Contact;
 import org.mustangproject.IncludedNote;
 import org.mustangproject.Invoice;
 import org.mustangproject.TradeParty;
-import org.mustangproject.ZUGFeRD.IReferencedDocument;
 import org.mustangproject.ZUGFeRD.IZUGFeRDPaymentDiscountTerms;
 import org.mustangproject.ZUGFeRD.IZUGFeRDPaymentTerms;
 import org.mustangproject.ZUGFeRD.Profiles;
@@ -75,6 +73,8 @@ public class APplusIncomingXMLProcessor {
 	private Invoice invoice;
 	private String invoiceXML;
 	private Document doc;
+
+	private String language;
 	
 	public APplusIncomingXMLProcessor(String rechnungDetails, Map<String,String> conversionKeys) throws Exception {
 		// Parse the XML content
@@ -122,7 +122,27 @@ public class APplusIncomingXMLProcessor {
 
         invoiceXML = new String(provider.getXML(), StandardCharsets.UTF_8);
 
+	}
+	
+	
+	private String getInterface() {
+		String rechnung = conversionKeys.get("INTERFACE");
+		if (rechnung == null) {
+			rechnung = getTextContent(getElement(doc, "ERECHNUNG"),"EINVOICE_INTERFACE");
+		}
+		return rechnung;
+	}
+	
 
+
+	public void printInvoiceDetails(Invoice invoice) {
+	    try {
+	        ObjectMapper mapper = new ObjectMapper();
+	        String prettyInvoice = mapper.writerWithDefaultPrettyPrinter().writeValueAsString(invoice);
+	        System.out.println(prettyInvoice);
+	    } catch (Exception e) {
+	        System.err.println("Error while pretty printing invoice: " + e.getMessage());
+	    }
 	}
 	
 	
@@ -139,7 +159,7 @@ public class APplusIncomingXMLProcessor {
 	    invoice.setSender(seller);
 	    
 
-	    // Step 12: Extract Bearbeiter (Processor/Handler)
+	    // Step 3: Extract Bearbeiter (Processor/Handler)
 	    Element bearbeiterElement = getElement(doc, "BEARBEITER");
 	    Contact bearbeiterContact = extractBearbeiter(bearbeiterElement);
 	    if (bearbeiterContact != null) {
@@ -149,156 +169,70 @@ public class APplusIncomingXMLProcessor {
 	        }
 	    }
 
-	    // Step 3: Extract Customer Information (ADRESSE)
-	    Element customerElement = getElement(doc, "ADRESSE");
-	    TradeParty customer = extractTradeParty(customerElement, "");
+	    // Step 4: Extract Customer Information (ADRESSE)
+	    Element customerElement = getElement(doc, "RECHNUNGADRESSE");
+	    TradeParty customer = extractTradeParty(customerElement, "R");
 	    invoice.setRecipient(customer);
 
-	    // Step 4: Extract Delivery Address (LIEFERADRESSE)
+	    // Step 5: Extract Delivery Address (LIEFERADRESSE)
 	    Element deliveryElement = getElement(doc, "LIEFERADRESSE");
 	    Element deliveryManualElement = getElement(doc, "MANUELLLIEFERADRESSE");
 	    TradeParty deliveryAddress = extractTradeParty(deliveryManualElement, "L", deliveryElement);
 	    invoice.setDeliveryAddress(deliveryAddress);
 
-	    // Step 5: Extract Payee Information (PAYEE)
-	    Element payeeElement = getElement(doc, "RECHNUNGADRESSE");
-	    TradeParty payee = extractTradeParty(payeeElement, "R");
-	    invoice.setPayee(payee);
-
 	    // Step 6: Extract Payment Terms (ZAHLUNGSBEDINGUNG)
 	    extractInvoicePaymentTerms(invoice);
 
 	    // Step 7: Extract Dates (DATUM)
-	    Element dateElement = getElement(doc, "DATUM");
-	    Date issueDate = parseDate(getTextContent(dateElement, "DATUM"));
-	    Date deliveryDate = parseDate(getTextContent(dateElement, "LEISTUNGSDATUM"));
-	    invoice.setIssueDate(issueDate);
-	    invoice.setDeliveryDate(deliveryDate);
+	    extractDates(invoice);
 
-	    // Step 8: Extract Monetary Values (BETRAG)
-	    //extractInvoiceMonetaryValues(invoice);
 
-	    // Step 10: Extract Invoice Line Items (RECHNUNGSPOSITIONEN)
+	    // Step 8: Extract Invoice Line Items (RECHNUNGSPOSITIONEN)
 	    NodeList lineItemNodes = doc.getElementsByTagName("RECHNUNGSPOSITION");
 	    List<Item> items = extractInvoiceItems(lineItemNodes);
 	    for (Item item : items) {
 	        invoice.addItem(item);
 	    }
 
-	    // Step 11: Extract Additional Notes (TEXT)
+	    // Step 9: Extract Additional Notes (TEXT)
 	    Element textElement = getElement(doc, "TEXT");
 	    Map<String, String> textFields = extractTextFields(textElement);
 	    integrateTexts(invoice, textFields);
 	    
 
 	    // Optionally log the extracted invoice for debugging
-	    System.out.println("Generated Invoice: " + invoice.toString());
 	    //printInvoiceDetails(invoice);
 	    
 	}
-	
-	private Contact extractBearbeiter(Element bearbeiterElement) {
-	    if (bearbeiterElement == null) {
-	        return null; // No data to process
-	    }
-
-	    Contact contact = new Contact();
-	    contact.setName(getTextContent(bearbeiterElement, "NAME"));
-	    contact.setPhone(getTextContent(bearbeiterElement, "TELEFON"));
-	    contact.setFax(getTextContent(bearbeiterElement, "TELEFAX"));
-	    contact.setEMail(getTextContent(bearbeiterElement, "EMAIL"));
-
-	    return contact;
-	}
-	
-
-	public void printInvoiceDetails(Invoice invoice) {
-	    try {
-	        ObjectMapper mapper = new ObjectMapper();
-	        String prettyInvoice = mapper.writerWithDefaultPrettyPrinter().writeValueAsString(invoice);
-	        System.out.println(prettyInvoice);
-	    } catch (Exception e) {
-	        System.err.println("Error while pretty printing invoice: " + e.getMessage());
-	    }
-	}
-
-
-
-	private void extractInvoicePaymentTerms(Invoice invoice) {
-	    Element paymentTermsElement = getElement(doc, "ZAHLUNGSBEDINGUNG");
-
-	    if (paymentTermsElement != null) {
-	        String nettoDays = getTextContent(paymentTermsElement, "NETTOTAGE");
-	        String discountPercent1 = getTextContent(paymentTermsElement, "PROZENTSKONTO1");
-	        String discountDays1 = getTextContent(paymentTermsElement, "SKONTOTAGE1");
-	        String nettoDate = getTextContent(paymentTermsElement, "NETTODATUM");
-
-	        invoice.setPaymentTerms(new IZUGFeRDPaymentTerms() {
-	            @Override
-	            public String getDescription() {
-	                return getTextContent(paymentTermsElement, "ZAHLUNGSBEDINGUNG");
-	            }
-
-	            @Override
-	            public Date getDueDate() {
-	                return nettoDate != null ? parseDate(nettoDate) : null;
-	            }
-
-	            @Override
-	            public IZUGFeRDPaymentDiscountTerms getDiscountTerms() {
-	                if (discountPercent1 != null && discountDays1 != null) {
-	                    return new IZUGFeRDPaymentDiscountTerms() {
-	                        @Override
-	                        public BigDecimal getCalculationPercentage() {
-	                        	if (discountPercent1 == null || discountPercent1.isEmpty())
-	                        		return BigDecimal.ZERO;
-	                        	else
-	                        		return new BigDecimal(discountPercent1);
-	                        }
-
-	                        @Override
-	                        public Date getBaseDate() {
-	                            return null;
-	                        }
-
-	                        @Override
-	                        public int getBasePeriodMeasure() {
-	                            return Integer.parseInt(discountDays1);
-	                        }
-
-	                        @Override
-	                        public String getBasePeriodUnitCode() {
-	                            return "DAY"; // Default to "DAY" as the unit
-	                        }
-	                    };
-	                }
-	                return null;
-	            }
-	        });
-	    }
-	}
-
 
 	private void extractInvoiceMetadata(Invoice invoice) {
+		
 	    String invoiceNumber = getTextContent(doc.getDocumentElement(), "RECHNUNGNR");
 	    String currency = getTextContent(doc.getDocumentElement(), "WAEHRUNG");
 	    String orderNo = getTextContent(doc.getDocumentElement(), "IHREBESTELLUNG");
 	    String orderDate = getTextContent(doc.getDocumentElement(), "BESTELLDATUM");
-	    String art = getTextContent(doc.getDocumentElement(), "ART");
+	    String art = getTextContent(doc.getDocumentElement(), "PARECHNUNGSART");
 	    String parechnungsart = getTextContent(doc.getDocumentElement(), "PARECHNUNGSART");
 	    String urrechnung = getTextContent(doc.getDocumentElement(), "URRECHNUNG");
+	    String auftrag = getTextContent(doc.getDocumentElement(), "AUFTRAG");
+	    language = getTextContent(doc.getDocumentElement(), "SPRACHE");
+	    
 	    invoice.setNumber(invoiceNumber);
 	    invoice.setCurrency(currency);
 	    invoice.setBuyerOrderReferencedDocumentID(orderNo);
 	    invoice.setBuyerOrderReferencedDocumentIssueDateTime(orderDate);
 	    invoice.setDocumentCode(mapArtToDocumentCode(art));
 	    invoice.setDocumentName(parechnungsart);
-	    invoice.setSellerOrderReferencedDocumentID(urrechnung);
+	    invoice.setInvoiceReferencedDocumentID(urrechnung);
+	    invoice.setSellerOrderReferencedDocumentID(auftrag);
+	    
 	    
 	    Element eInvoiceElement = getElement(doc, "ERECHNUNG");
 	    String einvoiceID = getTextContent(eInvoiceElement, "LEITWEGID");
 	    invoice.setReferenceNumber(einvoiceID);
 	}
+	
+
 	
 	private String mapArtToDocumentCode(String art) {
 	    switch (art) {
@@ -328,48 +262,13 @@ public class APplusIncomingXMLProcessor {
 	}
 	
 
-	private String getRechnung() {
-		String rechnung = conversionKeys.get("NUMBER");
-		if (rechnung == null) {
-			rechnung = getTextContent(getElement(doc, "RECHNUNG"),"RECHNUNGNR");
-		}
-		return rechnung;
-	}
-	
-	private String getInterface() {
-		String rechnung = conversionKeys.get("INTERFACE");
-		if (rechnung == null) {
-			rechnung = getTextContent(getElement(doc, "ERECHNUNG"),"EINVOICE_INTERFACE");
-		}
-		return rechnung;
-	}
-
-	private void integrateTexts(Invoice invoice, Map<String, String> textFields) {
-	    // Add notes as IncludedNotes with appropriate subject codes
-	    if (textFields.get("STDTEXT") != null) {
-	        invoice.addNotes(Collections.singletonList(IncludedNote.generalNote(textFields.get("STDTEXT"))));
-	    }
-	    if (textFields.get("FUSSTEXT") != null) {
-	        invoice.addNotes(Collections.singletonList(IncludedNote.regulatoryNote(textFields.get("FUSSTEXT"))));
-	    }
-	    if (textFields.get("FREITEXT") != null) {
-	        invoice.addNotes(Collections.singletonList(IncludedNote.unspecifiedNote(textFields.get("FREITEXT"))));
-	    }
-	    if (textFields.get("IHRTEXT") != null) {
-	        invoice.addNotes(Collections.singletonList(IncludedNote.sellerNote(textFields.get("IHRTEXT"))));
-	    }
-	    if (textFields.get("KOPFTEXT") != null) {
-	        invoice.addNotes(Collections.singletonList(IncludedNote.introductionNote(textFields.get("KOPFTEXT"))));
-	    }
-	}
-	
 	private TradeParty extractTradeParty(Element element, String type) {
 		return extractTradeParty(element, type, null);
 	}
 	
 	private TradeParty extractTradeParty(Element element, String type, Element fallbackElement) {
 	    if (element == null && fallbackElement == null) {
-	        return null; // Kein Element vorhanden, leere TradeParty zurückgeben
+	        return null; 
 	    }
 
 	    TradeParty tradeParty = new TradeParty();
@@ -405,59 +304,124 @@ public class APplusIncomingXMLProcessor {
 	    return tradeParty;
 	}
 
-	private String getTextContent(Element element, String tagName, Element fallbackElement) {
-	    if (element != null) {
-	        String content = getTextContent(element, tagName);
-	        if (content != null && !content.isEmpty()) {
-	            return content;
-	        }
+	
+	private Contact extractBearbeiter(Element bearbeiterElement) {
+	    if (bearbeiterElement == null) {
+	        return null; // No data to process
 	    }
-	    return fallbackElement != null ? getTextContent(fallbackElement, tagName) : null;
+
+	    Contact contact = new Contact();
+	    contact.setName(getTextContent(bearbeiterElement, "NAME"));
+	    contact.setPhone(getTextContent(bearbeiterElement, "TELEFON"));
+	    contact.setFax(getTextContent(bearbeiterElement, "TELEFAX"));
+	    contact.setEMail(getTextContent(bearbeiterElement, "EMAIL"));
+
+	    return contact;
 	}
 
 
-	private Map<String, String> extractUST(Element element) {
-	    Map<String, String> ust = new HashMap<>();
-	    if (element != null) {
-	        ust.put("USTPROZENT", getTextContent(element, "USTPROZENT"));
-	        ust.put("USTKATEGORIE", getTextContent(element, "USTKATEGORIE"));
-	        ust.put("USTBETRAG", getTextContent(element, "USTBETRAG"));
-	        ust.put("USTBASIS", getTextContent(element, "USTBASIS"));
+
+	private void extractInvoicePaymentTerms(Invoice invoice) {
+	    Element paymentTermsElement = getElement(doc, "ZAHLUNGSBEDINGUNG");
+
+	    if (paymentTermsElement != null) {
+	        String discountPercent1 = getTextContent(paymentTermsElement, "PROZENTSKONTO1");
+	        String discountDays1 = getTextContent(paymentTermsElement, "SKONTOTAGE1");
+	        String nettoDate = getTextContent(paymentTermsElement, "NETTODATUM");
+	        String skontoDate1 = getTextContent(paymentTermsElement, "SKONTODATUM1");
+
+	        invoice.setPaymentTerms(new IZUGFeRDPaymentTerms() {
+	            @Override
+	            public String getDescription() {
+	                return getTextContent(paymentTermsElement, "ZAHLUNGSBEDINGUNG");
+	            }
+
+	            @Override
+	            public Date getDueDate() {
+	                return nettoDate != null ? parseDate(nettoDate) : null;
+	            }
+
+	            @Override
+	            public IZUGFeRDPaymentDiscountTerms getDiscountTerms() {
+	                if (false && discountPercent1 != null && discountDays1 != null) {
+	                    return new IZUGFeRDPaymentDiscountTerms() {
+	                        @Override
+	                        public BigDecimal getCalculationPercentage() {
+	                        	if (discountPercent1 == null || discountPercent1.isEmpty())
+	                        		return BigDecimal.ZERO;
+	                        	else
+	                        		return new BigDecimal(discountPercent1);
+	                        }
+
+	                        @Override
+	                        public Date getBaseDate() {
+	                        	 return null;
+	                        }
+
+	                        @Override
+	                        public int getBasePeriodMeasure() {
+	                            return Integer.parseInt(discountDays1);
+	                        }
+
+	                        @Override
+	                        public String getBasePeriodUnitCode() {
+	                            return "DAY"; // Default to "DAY" as the unit
+	                        }
+	                    };
+	                }
+	                return null;
+	            }
+	        });
 	    }
-	    return ust;
 	}
+
+
+	private void integrateTexts(Invoice invoice, Map<String, String> textFields) {
+	    // Add notes as IncludedNotes with appropriate subject codes
+	    if (textFields.get("STDTEXT") != null) {
+	        invoice.addNotes(Collections.singletonList(IncludedNote.generalNote(textFields.get("STDTEXT"))));
+	    }
+	    if (textFields.get("FUSSTEXT") != null) {
+	        invoice.addNotes(Collections.singletonList(IncludedNote.regulatoryNote(textFields.get("FUSSTEXT"))));
+	    }
+	    if (textFields.get("FREITEXT") != null) {
+	        invoice.addNotes(Collections.singletonList(IncludedNote.unspecifiedNote(textFields.get("FREITEXT"))));
+	    }
+	    if (textFields.get("IHRTEXT") != null) {
+	        invoice.addNotes(Collections.singletonList(IncludedNote.sellerNote(textFields.get("IHRTEXT"))));
+	    }
+	    if (textFields.get("KOPFTEXT") != null) {
+	        invoice.addNotes(Collections.singletonList(IncludedNote.introductionNote(textFields.get("KOPFTEXT"))));
+	    }
+	}
+	
 
 	private Map<String, String> extractTextFields(Element element) {
 	    Map<String, String> textFields = new HashMap<>();
 	    if (element != null) {
-	        textFields.put("STDTEXT", getTextContent(element, "STDTEXT"));
-	        textFields.put("FUSSTEXT", getTextContent(element, "FUSSTEXT"));
-	        textFields.put("FREITEXT", getTextContent(element, "FREITEXT"));
-	        textFields.put("IHRTEXT", getTextContent(element, "IHRTEXT"));
-	        textFields.put("KOPFTEXT", getTextContent(element, "KOPFTEXT"));
+	        if (getTextContent(element, "STDTEXT") != null && !getTextContent(element, "STDTEXT").isEmpty())
+	        	textFields.put("STDTEXT", getTextContent(element, "STDTEXT"));
+	        if (getTextContent(element, "FUSSTEXT") != null && !getTextContent(element, "FUSSTEXT").isEmpty())
+	        	textFields.put("FUSSTEXT", getTextContent(element, "FUSSTEXT"));
+	        if (getTextContent(element, "FREITEXT") != null && !getTextContent(element, "FREITEXT").isEmpty())
+	        	textFields.put("FREITEXT", getTextContent(element, "FREITEXT"));
+	        if (getTextContent(element, "IHRTEXT") != null && !getTextContent(element, "IHRTEXT").isEmpty())
+	        	textFields.put("IHRTEXT", getTextContent(element, "IHRTEXT"));
+	        if (getTextContent(element, "KOPFTEXT") != null && !getTextContent(element, "KOPFTEXT").isEmpty())
+	        	textFields.put("KOPFTEXT", getTextContent(element, "KOPFTEXT"));
 	    }
 	    return textFields;
 	}
 	
-	private Map<String, Date> extractDates(Element element) {
-	    Map<String, Date> dates = new HashMap<>();
-	    if (element != null) {
-	        dates.put("DATUM", parseDate(getTextContent(element, "DATUM")));
-	        dates.put("LEISTUNGSDATUM", parseDate(getTextContent(element, "LEISTUNGSDATUM")));
-	    }
-	    return dates;
+	private void extractDates(Invoice invoice) {
+		// Step 7: Extract Dates (DATUM)
+	    Element dateElement = getElement(doc, "DATUM");
+	    Date issueDate = parseDate(getTextContent(dateElement, "DATUM"));
+	    Date deliveryDate = parseDate(getTextContent(dateElement, "LEISTUNGSDATUM"));
+	    invoice.setIssueDate(issueDate);
+	    invoice.setDeliveryDate(deliveryDate);
 	}
 	
-	private Map<String, BigDecimal> extractBetrag(Element element) {
-	    Map<String, BigDecimal> betrag = new HashMap<>();
-	    if (element != null) {
-	        betrag.put("BRUTTO", parseBigDecimal(getTextContent(element, "BRUTTO")));
-	        betrag.put("NETTOERLOES", parseBigDecimal(getTextContent(element, "NETTOERLOES")));
-	        betrag.put("RABATTPREIS", parseBigDecimal(getTextContent(element, "RABATTPREIS")));
-	        betrag.put("USTPREIS", parseBigDecimal(getTextContent(element, "USTPREIS")));
-	    }
-	    return betrag;
-	}
 	
 	private List<Item> extractInvoiceItems(NodeList itemNodes) {
 	    List<Item> items = new ArrayList<>();
@@ -471,8 +435,12 @@ public class APplusIncomingXMLProcessor {
 
 	            // Menge und Preis
 	            BigDecimal quantity = parseBigDecimal(getTextContent(positionElement, "MENGE"));
-	            BigDecimal unitPrice = parseBigDecimal(getTextContent(positionElement, "PREIS"));
+	            BigDecimal unitPrice = parseBigDecimal(getTextContent(positionElement, "NETTO"));
+	            BigDecimal packmenge = parseBigDecimal(getTextContent(positionElement, "PACKMENGE"));
 
+	            if (packmenge == BigDecimal.ZERO)
+	            	packmenge = BigDecimal.ONE;
+	            
 	            // Umsatzsteuer (optional)
 	            Element betragElement = getElement(positionElement, "BETRAG");
 	            BigDecimal discount = BigDecimal.ZERO;
@@ -508,7 +476,8 @@ public class APplusIncomingXMLProcessor {
 	                
 	                String customsTariffNumber = getTextContent(stammdatenElement, "ZOLLTARIFNR");
 	                if (customsTariffNumber != null) {
-	                	product.addAttribute("Zolltarifnr.", customsTariffNumber);
+	                	String zolltarifnrAtt = language == null || language.isEmpty() || language.equalsIgnoreCase("de") ? "Zolltarifnr." : "Customs tariff number";
+	                	product.addAttribute(zolltarifnrAtt, customsTariffNumber);
 	                }
 	            }
 	            product.setVATPercent(percent);
@@ -518,13 +487,6 @@ public class APplusIncomingXMLProcessor {
 	            String unitCode = UNIT_CODE_MAPPING.getOrDefault(unitType, "C62"); // Default to "Piece"
 	            product.setUnit(unitCode);
 	            
-	            // Erstelle die Position
-	            Item item = new Item();
-	            item.setProduct(product);
-	            item.setQuantity(quantity);
-	            item.setPrice(unitPrice);
-	            item.setTax(vat);
-
 	            // Add discount as allowance if applicable
 	            /*if (rabatt1.compareTo(BigDecimal.ZERO) > 0) {
 	                Allowance discountAllowance = new Allowance(rabatt1);
@@ -549,8 +511,14 @@ public class APplusIncomingXMLProcessor {
 	                discountAllowance.setTaxPercent(product.getVATPercent());
 	                item.addAllowance(discountAllowance); // Add allowance to the item
 	            }*/
+	            
+
+	            // Erstelle die Position
+	            Item item = new Item();
+	            
 	            BigDecimal summRabatt = rabatt1.add(rabatt2).add(mrabatt);
 	            if (summRabatt.compareTo(BigDecimal.ZERO) > 0) {
+	            	summRabatt = summRabatt.multiply(packmenge).divide(quantity);
 	                Allowance discountAllowance = new Allowance(summRabatt);
 	                discountAllowance.setReason("Rabatt");
 	                discountAllowance.setReasonCode("60");
@@ -559,24 +527,38 @@ public class APplusIncomingXMLProcessor {
 	            }
 	            
 
-	            // Weitere Attribute
-	            item.setLineTotalAmount(quantity.multiply(unitPrice));
+	            item.setProduct(product);
+	            item.setQuantity(quantity);
+	            item.setPrice(unitPrice);
+	            item.setBasisQuantity(packmenge);
 	            
-	          // Belege (References)
+	            item.setTax(vat);
+
+	            
+
+	            // Weitere Attribute
+	            //item.setLineTotalAmount(quantity.multiply(unitPrice));
+	            
+	            // Belege (References)
 	            Element belegeElement = getElement(positionElement, "BELEGE");
 	            if (belegeElement != null) {
 	                String auftragPos = getTextContent(belegeElement, "AUFTRAGPOS");
 	                String auftrag = getTextContent(belegeElement, "AUFTRAG");
 	                String lieferschein = getTextContent(belegeElement, "LIEFERSCHEIN");
-
+	                boolean germanAttributes = language != null && language.equalsIgnoreCase("de");
+	                String docattr;
+	                
 	                if (auftragPos != null) {
-	                	item.addReferencedDocument(new ReferencedDocument("Order Position", auftragPos));
+	                	docattr = germanAttributes ? "Auftragspos." : "Order Position";
+	                	item.addReferencedDocument(new ReferencedDocument(docattr, auftragPos));
 	                }
 	                if (auftrag != null) {
-	                	item.addReferencedDocument(new ReferencedDocument("Order Number", auftrag));
+	                	docattr = germanAttributes ? "Auftrag" : "Order Number";
+	                	item.addReferencedDocument(new ReferencedDocument(docattr, auftrag));
 	                }
 	                if (lieferschein != null) {
-	                	item.addReferencedDocument(new ReferencedDocument("Delivery Note", lieferschein));
+	                	docattr = germanAttributes ? "Lieferschein" : "Delivery Note";
+	                	item.addReferencedDocument(new ReferencedDocument(docattr, lieferschein));
 	                }
 
 	            }
@@ -590,6 +572,7 @@ public class APplusIncomingXMLProcessor {
 	}
 
 
+	//////////////////////////////////////////////////// PARSING METHODS ////////////////////////////////////////////////////////
 	private BigDecimal parseBigDecimal(String value) {
 	    if (value == null || value.isEmpty()) {
 	        return BigDecimal.ZERO;
@@ -597,7 +580,7 @@ public class APplusIncomingXMLProcessor {
 	    try {
 	        return new BigDecimal(value);
 	    } catch (NumberFormatException e) {
-	        e.printStackTrace();
+	        //e.printStackTrace();
 	        return BigDecimal.ZERO;
 	    }
 	}
@@ -614,13 +597,15 @@ public class APplusIncomingXMLProcessor {
 	    		return new SimpleDateFormat("dd.MM.yyyy HH:mm:ss").parse(dateString);
 
 			} catch (ParseException e1) {
-				e1.printStackTrace();
+				//e1.printStackTrace();
 				return null;
 			}
 		    
 	    }
 	}
 	
+	
+	////////////////////////////////////////////////// XML METHODS ////////////////////////////////////////////////////////
 	private Element getElement(Element parent, String tagName) {
 	    NodeList nodeList = parent.getElementsByTagName(tagName);
 	    if (nodeList.getLength() > 0 && nodeList.item(0).getNodeType() == Node.ELEMENT_NODE) {
@@ -648,6 +633,18 @@ public class APplusIncomingXMLProcessor {
 	        return nodeList.item(0).getTextContent().trim();
 	    }
 	    return null;
+	}
+	
+
+
+	private String getTextContent(Element element, String tagName, Element fallbackElement) {
+	    if (element != null) {
+	        String content = getTextContent(element, tagName);
+	        if (content != null && !content.isEmpty()) {
+	            return content;
+	        }
+	    }
+	    return fallbackElement != null ? getTextContent(fallbackElement, tagName) : null;
 	}
 
 }
