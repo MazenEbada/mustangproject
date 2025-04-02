@@ -5,6 +5,7 @@ import java.io.InputStream;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.text.SimpleDateFormat;
+import java.util.Arrays;
 import java.util.Date;
 
 import org.apache.commons.io.IOUtils;
@@ -209,6 +210,14 @@ public class XMLTools extends XMLWriter {
 		}
 		return zugferdData;
 	}
+	
+	public static byte[] removeUtf8Bom(byte[] bytes) {
+        byte[] bom = {(byte)0xEF, (byte)0xBB, (byte)0xBF};
+        if (bytes.length > 3 && Arrays.equals(Arrays.copyOf(bytes, 3), bom)) {
+            return Arrays.copyOfRange(bytes, 3, bytes.length); // Entfernt das BOM
+        }
+        return bytes; // Falls kein BOM vorhanden, Original zurückgeben
+    }
 
 	public static byte[] getBytesFromStream(InputStream fileinput) throws IOException {
 	  return IOUtils.toByteArray (fileinput);

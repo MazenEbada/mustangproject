@@ -71,6 +71,7 @@ import org.apache.xmpbox.xml.XmpParsingException;
 import org.apache.xmpbox.xml.XmpSerializer;
 import org.mustangproject.EStandard;
 import org.mustangproject.FileAttachment;
+import org.mustangproject.XMLTools;
 
 import jakarta.activation.DataSource;
 import jakarta.activation.FileDataSource;
@@ -390,6 +391,7 @@ public class ZUGFeRDExporterFromA3 extends XRExporter implements IZUGFeRDExporte
 		dict.setString("UF", filename);
 		dict.setString("Desc", description);
 
+		data = XMLTools.removeUtf8Bom(data);
 		ByteArrayInputStream fakeFile = new ByteArrayInputStream(data);
 		PDEmbeddedFile ef = new PDEmbeddedFile(doc, fakeFile);
 //		ef.addCompression();

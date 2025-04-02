@@ -1,3 +1,9 @@
+/*
+ * This file is part of Featurepack E-Rechnung VT
+
+ * Copyright by AM - Consulting GmbH 2025
+ * License under /AppServer/XML/License-AMC.txt
+ */
 package org.mustangproject.applus;
 
 import org.mustangproject.Allowance;
@@ -30,8 +36,10 @@ import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 
 import org.mustangproject.Item;
+import org.mustangproject.LegalOrganisation;
 import org.mustangproject.Product;
 import org.mustangproject.ReferencedDocument;
+import org.mustangproject.SchemedID;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
@@ -43,7 +51,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 /*
  * MEB: APplus Processor
  */
-public class APplusIncomingXMLProcessor {
+public class DeprecatedAPplusIncomingXMLProcessor {
 	
 	private static final Map<String, String> UNIT_CODE_MAPPING = Map.ofEntries(
 		    Map.entry("me", "C62"),
@@ -75,8 +83,10 @@ public class APplusIncomingXMLProcessor {
 	private Document doc;
 
 	private String language;
+
+	private String applusEinterface;
 	
-	public APplusIncomingXMLProcessor(String rechnungDetails, Map<String,String> conversionKeys) throws Exception {
+	public DeprecatedAPplusIncomingXMLProcessor(String rechnungDetails, Map<String,String> conversionKeys) throws Exception {
 		// Parse the XML content
         DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
         DocumentBuilder builder = factory.newDocumentBuilder();
@@ -84,6 +94,7 @@ public class APplusIncomingXMLProcessor {
         doc.getDocumentElement().normalize();
         
 		this.conversionKeys = conversionKeys;
+		applusEinterface = getInterface();
 	}
 	
 	public void process() throws Exception {
@@ -101,11 +112,10 @@ public class APplusIncomingXMLProcessor {
 	}
 
 	public void generateInvoiceXML() throws Exception {
-		String applusEinterface = getInterface();
 		String einterface;
 		switch (applusEinterface) {
 			case "Z":
-				einterface = "EN16931";
+				einterface = "EXTENDED";
 				break;
 			case "X":
 				einterface = "XRECHNUNG";
@@ -214,6 +224,7 @@ public class APplusIncomingXMLProcessor {
 	    String art = getTextContent(doc.getDocumentElement(), "PARECHNUNGSART");
 	    String parechnungsart = getTextContent(doc.getDocumentElement(), "PARECHNUNGSART");
 	    String urrechnung = getTextContent(doc.getDocumentElement(), "URRECHNUNG");
+	    String liefertermin = getTextContent(doc.getDocumentElement(), "LIEFERTERMIN");
 	    String auftrag = getTextContent(doc.getDocumentElement(), "AUFTRAG");
 	    language = getTextContent(doc.getDocumentElement(), "SPRACHE");
 	    
@@ -223,7 +234,8 @@ public class APplusIncomingXMLProcessor {
 	    invoice.setBuyerOrderReferencedDocumentIssueDateTime(orderDate);
 	    invoice.setDocumentCode(mapArtToDocumentCode(art));
 	    invoice.setDocumentName(parechnungsart);
-	    invoice.setInvoiceReferencedDocumentID(urrechnung);
+	    if (urrechnung != null) invoice.setInvoiceReferencedDocumentID(urrechnung);
+	    if (liefertermin != null) invoice.setDeliveryDate(parseDate(liefertermin));
 	    invoice.setSellerOrderReferencedDocumentID(auftrag);
 	    
 	    
@@ -272,6 +284,22 @@ public class APplusIncomingXMLProcessor {
 	    }
 
 	    TradeParty tradeParty = new TradeParty();
+	    
+
+	    // Setze Kommunikationsdetails
+	    
+	    String phone = getTextContent(element, type + "TELEFON", fallbackElement);
+	    String telefax = getTextContent(element, type + "TELEFAX", fallbackElement);
+	    String email = getTextContent(element, type + "EMAIL", fallbackElement);
+	    String name = getTextContent(element, type + "NAME", fallbackElement);
+	    
+	    String gln = getTextContent(element, type + "GLNID", fallbackElement); // Hauptfirma
+	    if (gln != null && !gln.isEmpty()) {
+	    	SchemedID id = new SchemedID();
+	    	id.setId(gln);
+	    	id.setScheme("0088");
+	    	tradeParty.addGlobalID(id);
+	    }
 
 	    // Setze grundlegende Adressinformationen
 	    tradeParty.setName(getTextContent(element, type + "FIRMA1", fallbackElement)); // Hauptfirma
@@ -282,17 +310,21 @@ public class APplusIncomingXMLProcessor {
 	    tradeParty.setLocation(getTextContent(element, type + "ORT", fallbackElement));
 	    tradeParty.setCountry(getTextContent(element, type + "LAND", fallbackElement));
 
+	    tradeParty.setEmail(email);
+	    
 	    // Setze Steuerdaten
 	    tradeParty.setTaxID(getTextContent(element, type + "STEUERNUMMER", fallbackElement));
 	    tradeParty.setVATID(getTextContent(element, type + "USTID", fallbackElement));
 
-	    // Setze Kommunikationsdetails
-	    Contact contact = new Contact();
-	    contact.setPhone(getTextContent(element, type + "TELEFON", fallbackElement));
-	    contact.setFax(getTextContent(element, type + "TELEFAX", fallbackElement));
-	    contact.setEMail(getTextContent(element, type + "EMAIL", fallbackElement));
-	    contact.setName(getTextContent(element, type + "NAME", fallbackElement));
-	    tradeParty.setContact(contact);
+	    if (phone != null || telefax != null || email != null || name != null) {
+	    	Contact contact = new Contact();
+		    contact.setPhone(phone);
+		    contact.setFax(telefax);
+		    contact.setEMail(email);
+		    contact.setName(name);
+		    tradeParty.setContact(contact);
+	    }
+	    
 
 	    // Setze Bankdaten
 	    BankDetails bankDetails = new BankDetails();
@@ -300,6 +332,25 @@ public class APplusIncomingXMLProcessor {
 	    bankDetails.setBIC(getTextContent(element, type + "BIC", fallbackElement));
 	    bankDetails.setAccountName(getTextContent(element, type + "FIRMA1", fallbackElement));
 	    tradeParty.getBankDetails().add(bankDetails);
+	    
+	    if (type != null && type.equalsIgnoreCase("V")) {
+	    	String handelsregister = getTextContent(element, type + "HANDELSREGISTER", fallbackElement);
+	    	if (handelsregister != null) {
+		    	LegalOrganisation lO = new LegalOrganisation(handelsregister,"0002");
+		    	lO.setTradingBusinessName(tradeParty.getName());
+		    	tradeParty.setLegalOrganisation(lO);
+	    	}
+	    	String gf1 = getTextContent(element, type + "GF1", fallbackElement);
+	    	String gf2 = getTextContent(element, type + "GF2", fallbackElement);
+	    	String gf = null;
+	    	if (gf1 != null) {
+	    		gf = "Geshäftsführer: " + gf1;
+		    	if (gf2 != null) gf += ", " + gf2;
+	    	}
+	    	if (gf != null) {
+		        invoice.addNotes(Collections.singletonList(IncludedNote.regulatoryNote(gf)));
+		    }
+	    }
 
 	    return tradeParty;
 	}
@@ -325,12 +376,29 @@ public class APplusIncomingXMLProcessor {
 	    Element paymentTermsElement = getElement(doc, "ZAHLUNGSBEDINGUNG");
 
 	    if (paymentTermsElement != null) {
+	        String nettoDate = getTextContent(paymentTermsElement, "NETTODATUM");
+	        
 	        String discountPercent1 = getTextContent(paymentTermsElement, "PROZENTSKONTO1");
 	        String discountDays1 = getTextContent(paymentTermsElement, "SKONTOTAGE1");
-	        String nettoDate = getTextContent(paymentTermsElement, "NETTODATUM");
 	        String skontoDate1 = getTextContent(paymentTermsElement, "SKONTODATUM1");
+	        
+	        String discountPercent2 = getTextContent(paymentTermsElement, "PROZENTSKONTO2");
+	        String discountDays2 = getTextContent(paymentTermsElement, "SKONTOTAGE2");
+	        String skontoDate2 = getTextContent(paymentTermsElement, "SKONTODATUM2");
 
-	        invoice.setPaymentTerms(new IZUGFeRDPaymentTerms() {
+	        IZUGFeRDPaymentTerms[] paymentTerms; 
+	        int count = 1;
+	        if (!applusEinterface.equals("X") && discountPercent1 != null && discountDays1 != null
+	        		&& !discountPercent1.isEmpty() && !discountDays1.isEmpty()) {
+	        	count ++;
+	        }
+	        if (!applusEinterface.equals("X") && discountPercent2 != null && discountDays2 != null
+	        		&& !discountPercent2.isEmpty() && !discountDays2.isEmpty()) {
+	        	count ++;
+	        }
+	        paymentTerms = new IZUGFeRDPaymentTerms[count];
+	        
+	        paymentTerms[0] = (new IZUGFeRDPaymentTerms() {
 	            @Override
 	            public String getDescription() {
 	                return getTextContent(paymentTermsElement, "ZAHLUNGSBEDINGUNG");
@@ -343,7 +411,25 @@ public class APplusIncomingXMLProcessor {
 
 	            @Override
 	            public IZUGFeRDPaymentDiscountTerms getDiscountTerms() {
-	                if (false && discountPercent1 != null && discountDays1 != null) {
+	            	return null;
+	            }
+	        });
+	        
+	        if (!applusEinterface.equals("X") && discountPercent1 != null && discountDays1 != null
+	        		&& !discountPercent1.isEmpty() && !discountDays1.isEmpty()) {
+	        	paymentTerms[1] =  (new IZUGFeRDPaymentTerms() {
+		            @Override
+		            public String getDescription() {
+		                return getTextContent(paymentTermsElement, "ZAHLUNGSBEDINGUNG") + " - SKONTO 1 - " + discountPercent1 + "%";
+		            }
+
+		            @Override
+		            public Date getDueDate() {
+		                return null;
+		            }
+
+		            @Override
+		            public IZUGFeRDPaymentDiscountTerms getDiscountTerms() {
 	                    return new IZUGFeRDPaymentDiscountTerms() {
 	                        @Override
 	                        public BigDecimal getCalculationPercentage() {
@@ -355,7 +441,7 @@ public class APplusIncomingXMLProcessor {
 
 	                        @Override
 	                        public Date getBaseDate() {
-	                        	 return null;
+	                        	return null;
 	                        }
 
 	                        @Override
@@ -367,11 +453,62 @@ public class APplusIncomingXMLProcessor {
 	                        public String getBasePeriodUnitCode() {
 	                            return "DAY"; // Default to "DAY" as the unit
 	                        }
-	                    };
-	                }
-	                return null;
-	            }
-	        });
+		                    };
+		                
+		            }
+		        });
+	        }
+	        
+	        if (!applusEinterface.equals("X") && discountPercent2 != null && discountDays2 != null
+        		&& !discountPercent2.isEmpty() && !discountDays2.isEmpty()) {
+	        	int arrayCount = 1;
+	        	if (discountPercent1 != null && discountDays1 != null
+		        		&& !discountPercent1.isEmpty() && !discountDays1.isEmpty()) {
+	        		arrayCount ++;
+	        	}
+	        	paymentTerms[arrayCount] = (new IZUGFeRDPaymentTerms() {
+		            @Override
+		            public String getDescription() {
+		                return getTextContent(paymentTermsElement, "ZAHLUNGSBEDINGUNG") + " - SKONTO 2 - " + discountPercent2 + "%";
+		            }
+
+		            @Override
+		            public Date getDueDate() {
+		                return null;
+		            }
+
+		            @Override
+		            public IZUGFeRDPaymentDiscountTerms getDiscountTerms() {
+	                    return new IZUGFeRDPaymentDiscountTerms() {
+	                        @Override
+	                        public BigDecimal getCalculationPercentage() {
+	                        	if (discountPercent2 == null || discountPercent2.isEmpty())
+	                        		return BigDecimal.ZERO;
+	                        	else
+	                        		return new BigDecimal(discountPercent2);
+	                        }
+
+	                        @Override
+	                        public Date getBaseDate() {
+	                        	return null;
+	                        }
+
+	                        @Override
+	                        public int getBasePeriodMeasure() {
+	                            return Integer.parseInt(discountDays2);
+	                        }
+
+	                        @Override
+	                        public String getBasePeriodUnitCode() {
+	                            return "DAY"; // Default to "DAY" as the unit
+	                        }
+		                    };
+		                
+		            }
+		        });
+	        }
+	        
+	        invoice.setPaymentTerms(paymentTerms);
 	    }
 	}
 
@@ -419,7 +556,8 @@ public class APplusIncomingXMLProcessor {
 	    Date issueDate = parseDate(getTextContent(dateElement, "DATUM"));
 	    Date deliveryDate = parseDate(getTextContent(dateElement, "LEISTUNGSDATUM"));
 	    invoice.setIssueDate(issueDate);
-	    invoice.setDeliveryDate(deliveryDate);
+	    if (invoice.getDeliveryDate() == null)
+	    	invoice.setDeliveryDate(deliveryDate);
 	}
 	
 	
@@ -540,7 +678,7 @@ public class APplusIncomingXMLProcessor {
 	            //item.setLineTotalAmount(quantity.multiply(unitPrice));
 	            
 	            // Belege (References)
-	            Element belegeElement = getElement(positionElement, "BELEGE");
+	            /*Element belegeElement = getElement(positionElement, "BELEGE");
 	            if (belegeElement != null) {
 	                String auftragPos = getTextContent(belegeElement, "AUFTRAGPOS");
 	                String auftrag = getTextContent(belegeElement, "AUFTRAG");
@@ -561,7 +699,7 @@ public class APplusIncomingXMLProcessor {
 	                	item.addReferencedDocument(new ReferencedDocument(docattr, lieferschein));
 	                }
 
-	            }
+	            }*/
 
 	            // Position zur Liste hinzufügen
 	            items.add(item);
@@ -630,7 +768,8 @@ public class APplusIncomingXMLProcessor {
 	    if (element == null) return null;
 	    NodeList nodeList = element.getElementsByTagName(tagName);
 	    if (nodeList.getLength() > 0 && nodeList.item(0) != null) {
-	        return nodeList.item(0).getTextContent().trim();
+	        String ret = nodeList.item(0).getTextContent();
+	    	return ret != null && ret.isBlank() ? null : ret.trim();
 	    }
 	    return null;
 	}

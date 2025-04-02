@@ -1,10 +1,18 @@
+/*
+ * This file is part of Featurepack E-Rechnung VT
+
+ * Copyright by AM - Consulting GmbH 2025
+ * License under /AppServer/XML/License-AMC.txt
+ */
 package org.mustangproject.commandline;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileReader;
 import java.io.FileWriter;
+import java.io.InputStreamReader;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -24,7 +32,7 @@ public class APplusActions {
         return null;
     }
 	
-	public static String handleGenerateFromXML(String[] args, String tempOutputFile) throws Exception {
+	public static String handleGenerateFromXML(String[] args) throws Exception {
 	    String result = null;
 	    
 		// Parse required arguments for XML generation
@@ -43,6 +51,14 @@ public class APplusActions {
 	            }
 	        }
 	    }
+	    
+	    String tempFilePath = null;
+	    for (int i = 0; i < args.length - 1; i++) {
+            if (args[i].equalsIgnoreCase("--temp-output-file")) {
+            	tempFilePath = args[i + 1];
+                break;
+            }
+        }
 
 	    if (inputXML == null) {
 	        System.err.println("Error: --input-xml parameter is required for 'GENERATE_FROM_XML'.");
@@ -51,18 +67,52 @@ public class APplusActions {
 	    
 	    StringBuilder content = new StringBuilder();
 	    File inputFile = new File(inputXML);
-        try (BufferedReader fileReader = new BufferedReader(new FileReader(inputFile))) {
-            content = new StringBuilder();
-            String line;
-            while ((line = fileReader.readLine()) != null) {
-                content.append(line).append("\n");
-            }
-        }
+	    try (BufferedReader fileReader = new BufferedReader(
+	            new InputStreamReader(new FileInputStream(inputFile), "UTF-8"))) {
+	       content = new StringBuilder();
+	       String line;
+	       while ((line = fileReader.readLine()) != null) {
+	           content.append(line).append("\n");
+	       }
+	   }
+
 	    
-	    result = APplusInterface.getErechnungXML(content.toString(), conversionKeys, tempOutputFile);
+	    result = APplusInterface.getErechnungXML(content.toString(), conversionKeys, tempFilePath);
 
 	    return result;
 	   
+	}
+
+	public static String handleGenerateSimple(String[] args) throws Exception {
+		String result = null;
+	    
+		// Parse required arguments for XML generation
+	    String inputFileContent = getArgValue(args, "--input-file");
+	    if (inputFileContent == null) {
+	        System.err.println("Error: --input-file parameter is required for 'GENERATE_SIMPLE'.");
+	        System.exit(1);
+	    }
+	    
+		// Parse required arguments for XML generation
+	    String outputFormat = getArgValue(args, "--output-format");
+	    if (outputFormat == null) {
+	        System.err.println("Error: --output-format parameter is required for 'GENERATE_SIMPLE'.");
+	        System.exit(1);
+	    }
+	    
+	    String tempFilePath = null;
+	    for (int i = 0; i < args.length - 1; i++) {
+            if (args[i].equalsIgnoreCase("--temp-output-file")) {
+            	tempFilePath = args[i + 1];
+                break;
+            }
+        }
+	    
+	    File inputFile = new File(inputFileContent);
+	    
+	    result = APplusInterface.generateSimpleInvoice(inputFile, outputFormat, tempFilePath);
+
+	    return result;
 	}
 
 }

@@ -1,3 +1,9 @@
+/*
+ * This file is part of Featurepack E-Rechnung VT
+
+ * Copyright by AM - Consulting GmbH 2025
+ * License under /AppServer/XML/License-AMC.txt
+ */
 package org.mustangproject.applus;
 
 import java.io.BufferedWriter;
@@ -28,7 +34,7 @@ import org.xml.sax.SAXException;
 /*
  * MEB: APplus Parser
  */
-public class APplusIncomingXMLParser {
+public class DeprecatedAPplusIncomingXMLParser {
 
 	public static String getFriendlyXML(String complexXML, Map<String,String> conversionKeys) {
 	    try {
@@ -54,7 +60,7 @@ public class APplusIncomingXMLParser {
 	        Map<String, String> adresseData = extractAddress(doc, "customerAdresse", "customerFirma", "customerBank");
 	        Map<String, String> lieferAdresseData = extractAddressWithFallback(doc, "customerLAdresse", "customerLFirma", "customerLBank", "customerAdresse", "customerFirma", "customerBank");
 	        Map<String, String> rechnungAdresseData = extractAddressWithFallback(doc, "customerRAdresse", "customerRFirma", "customerRBank", "customerAdresse", "customerFirma", "customerBank");
-	        Map<String, String> bearbeiterData = extractBearbeiter(doc, "personal", "", conversionKeys.get("PERSONALDATA"));
+	        Map<String, String> bearbeiterData = extractBearbeiter(doc, "personal", "personalAdresse", conversionKeys.get("PERSONALDATA"));
 	        Map<String, String> zahlungsbedingungenData = extractZahlungsbedingungen(doc, rechnungElement, "zahlungsbed", "zahlungsbedlng", conversionKeys.get("ZBDETAILS"));
 	        List<Map<String, Object>> rechnungspositionen = extractRechnungspositionen(doc);
 
@@ -255,6 +261,7 @@ public class APplusIncomingXMLParser {
 	    data.put("URRECHNUNG", getElementValue(rechnungElement, "URRECHNUNG"));
 	    data.put("AUFTRAG", getElementValue(rechnungElement, "AUFTRAG"));
 	    data.put("SPRACHE", getElementValue(rechnungElement, "SPRACHE"));
+	    data.put("LIEFERTERMIN", getElementValue(rechnungElement, "ANP_LIEFERTERMIN"));
 
 	    return data;
 	}
@@ -268,6 +275,7 @@ public class APplusIncomingXMLParser {
 	    Element firmaElement = getElement(doc, firmaTag);
 	    Element bankElement = getElement(doc, bankTag);
 
+	    data.put("GLNID", getElementValue(adresseElement, "ANP_GLN"));
 	    data.put("FIRMA1", getElementValue(adresseElement, "FIRMA1"));
 	    data.put("FIRMA2", getElementValue(adresseElement, "FIRMA2"));
 	    data.put("FIRMA3", getElementValue(adresseElement, "FIRMA3"));
@@ -282,6 +290,9 @@ public class APplusIncomingXMLParser {
 	    data.put("TELEFON", getElementValue(adresseElement, "TELEFON"));
 	    data.put("EMAIL", getElementValue(adresseElement, "EMAIL"));
 	    data.put("DUNSNR", getElementValue(adresseElement, "DUNSNR"));
+	    data.put("HANDELSREGISTER", getElementValue(firmaElement, "HANDELSREGISTER"));
+	    data.put("GF1", getElementValue(firmaElement, "GF1"));
+	    data.put("GF2", getElementValue(firmaElement, "GF2"));
 
 	    // Correct ISNULL logic for USTID
 	    data.put("USTID", getElementValue(adresseElement, "EGSTEUERNR") != null 
@@ -300,6 +311,7 @@ public class APplusIncomingXMLParser {
 	private static Map<String, String> extractBearbeiter(Document doc, String personalTag, String adresseTag, String personaldata) {
 	    Map<String, String> data = new HashMap<>();
 	    Element personalElement = getElement(doc, personalTag);
+	    Element adresseElement = getElement(doc, adresseTag);
 
 	    data.put("NAME", getElementValue(personalElement, "NAME"));
 	    if (personaldata != null && personaldata.equalsIgnoreCase("PERSONAL")) {
@@ -308,10 +320,10 @@ public class APplusIncomingXMLParser {
 		    data.put("TELEFAX", getElementValue(personalElement, "ANP_FAXDURCHWAHL"));
 		    data.put("ABTEILUNG", getElementValue(personalElement, "ABTEILUNG"));
 	    } else {
-		    data.put("EMAIL", getElementValue(personalElement, "EMAIL"));
-		    data.put("TELEFON", getElementValue(personalElement, "TELEFON"));
-		    data.put("TELEFAX", getElementValue(personalElement, "TELEFAX"));
-		    data.put("ABTEILUNG", getElementValue(personalElement, "ABTEILUNG"));
+		    data.put("EMAIL", getElementValue(adresseElement, "EMAIL"));
+		    data.put("TELEFON", getElementValue(adresseElement, "TELEFON"));
+		    data.put("TELEFAX", getElementValue(adresseElement, "TELEFAX"));
+		    data.put("ABTEILUNG", getElementValue(adresseElement, "ABTEILUNG"));
 	    }
 
 	    return data;
@@ -491,7 +503,7 @@ public class APplusIncomingXMLParser {
 
 	            // TEXT
 	            Map<String, String> text = new HashMap<>();
-	            text.put("ANZTEXT", getElementValue(sourceElement, "ANZTEXT"));
+	            text.put("ANZTEXT", getElementValue(sourceElement, "HTMLANZTEXT"));
 	            if (getElementValue(sourceElement, "NAME") == null || getElementValue(sourceElement, "NAME").isEmpty())
 	            	text.put("NAME", getElementValue(sourceElement, "NAMEINTERN"));
 	            else

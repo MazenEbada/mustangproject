@@ -336,26 +336,32 @@ public class Main {
 			
 
 			//MEB: Custom Actions
+			/*
+			 *
+			 * This custom part is part of Featurepack E-Rechnung VT
+			
+			 * Copyright by AM - Consulting GmbH 2025
+			 * License under /AppServer/XML/License-AMC.txt
+			 */
+
 			// ..................................................................
 	    	// Check if a custom action is specified
+            
 	        if (args.length >= 2 && args[0].equalsIgnoreCase("--custom-action")) {
+	        	
 	        	String returnString = null;
 	            switch (args[1].toUpperCase()) {
 	                case "GENERATE_FROM_XML":
-	                	// Check if the caller provided a temp file path
-	    	            String tempFilePath = null;
-	    	            for (int i = 0; i < args.length - 1; i++) {
-	    	                if (args[i].equalsIgnoreCase("--temp-output-file")) {
-	    	                	tempFilePath = args[i + 1];
-	    	                    break;
-	    	                }
-	    	            }
-	                	returnString = APplusActions.handleGenerateFromXML(args,tempFilePath);
+	                	returnString = APplusActions.handleGenerateFromXML(args);
+	                	break;
+	                case "GENERATE_SIMPLE":
+	                	returnString = APplusActions.handleGenerateSimple(args);
 	                	break;
 	                default:
 	                    System.err.println("Error: Unknown custom action '" + args[1] + "'");
 	                    System.exit(1);
 	            }
+	            
 	            // Check if the caller provided a temp file path
 	            String outputFilePath = null;
 	            for (int i = 0; i < args.length - 1; i++) {
@@ -366,12 +372,12 @@ public class Main {
 	            }
 
 	            if (returnString != null && outputFilePath != null) {
-	                File outputFile = new File(outputFilePath);
+	            	File outputFile = new File(outputFilePath);
 
-	                // Write the result to the provided file
-	                try (FileWriter writer = new FileWriter(outputFile)) {
-	                    writer.write(returnString);
-	                }
+	            	// Write the result to the provided file with UTF-8 encoding
+	            	try (Writer writer = new OutputStreamWriter(new FileOutputStream(outputFile), "UTF-8")) {
+	            	    writer.write(returnString);
+	            	}
 
 	                //System.out.println("Successfully wrote output to: " + outputFilePath);
 	            } else if (returnString != null) {

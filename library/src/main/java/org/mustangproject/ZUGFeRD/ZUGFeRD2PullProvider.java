@@ -635,7 +635,6 @@ public class ZUGFeRD2PullProvider implements IXMLProvider {
 				"</ram:ShipToTradeParty>";
 		}
 
-
 		if (trans.getDeliveryDate() != null) {
 			xml += "<ram:ActualDeliverySupplyChainEvent>"
 				+ "<ram:OccurrenceDateTime>";
@@ -995,7 +994,8 @@ public class ZUGFeRD2PullProvider implements IXMLProvider {
 				paymentTermsXml += "<ram:ApplicableTradePaymentDiscountTerms>";
 				final String currency = trans.getCurrency();
 				final String basisAmount = currencyFormat(calc.getGrandTotal());
-				paymentTermsXml += "<ram:BasisAmount currencyID=\"" + currency + "\">" + basisAmount + "</ram:BasisAmount>";
+				//paymentTermsXml += "<ram:BasisAmount currencyID=\"" + currency + "\">" + basisAmount + "</ram:BasisAmount>";
+				paymentTermsXml += "<ram:BasisAmount>" + basisAmount + "</ram:BasisAmount>";
 				paymentTermsXml += "<ram:CalculationPercent>" + discountTerms.getCalculationPercentage().toString()
 					+ "</ram:CalculationPercent>";
 
