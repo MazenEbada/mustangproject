@@ -113,8 +113,8 @@ public class MustangToInternProcessor implements InboundInvoiceProcessor {
         metadata.setOriginalInvoice(mustangInvoice.getInvoiceReferencedDocumentID());
         
         // Art der Rechnung aus DocumentCode ableiten
-        metadata.setInvoiceType(mapDocumentCodeToArt(mustangInvoice.getDocumentCode()));
-        metadata.setInvoiceTypePa(mustangInvoice.getDocumentName());
+        metadata.setInvoiceTypePa(mapDocumentCodeToArt(mustangInvoice.getDocumentCode()));
+        //metadata.setInvoiceTypePa(mustangInvoice.getDocumentName());
         
         // Datumsfelder konvertieren
         if (mustangInvoice.getIssueDate() != null) {
@@ -160,15 +160,15 @@ public class MustangToInternProcessor implements InboundInvoiceProcessor {
         
         switch (documentCode) {
             case DocumentCodeTypeConstants.INVOICE:
-                return "RE";
+                return "R";
             case DocumentCodeTypeConstants.PARTIAL_BILLING:
-                return "TR";
+                return "TS";
             case DocumentCodeTypeConstants.CREDITNOTE:
-                return "GU";
+                return "G";
             case DocumentCodeTypeConstants.CORRECTEDINVOICE:
-                return "RE";
+                return "R";
             default:
-                return "RE";
+                return "R";
         }
     }
     
@@ -225,7 +225,9 @@ public class MustangToInternProcessor implements InboundInvoiceProcessor {
         String id = party.getGlobalID();
         if ("0088".equals(party.getGlobalIDScheme())) {
             address.setGlnId(party.getGlobalID());
-        }
+        } else if ("0060".equals(party.getGlobalIDScheme())) {
+            address.setDuns(party.getGlobalID());
+        } 
         
         
         // Grundlegende Adressinformationen

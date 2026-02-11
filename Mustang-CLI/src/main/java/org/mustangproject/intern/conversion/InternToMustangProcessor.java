@@ -249,7 +249,7 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
             mustangInvoice.setBuyerOrderReferencedDocumentIssueDateTime(new SimpleDateFormat("yyyy-MM-dd").format(orderDate));
         }
         
-        mustangInvoice.setDocumentCode(mapArtToDocumentCode(metadata.getInvoiceType()));
+        mustangInvoice.setDocumentCode(mapArtToDocumentCode(metadata.getInvoiceTypePa()));
         mustangInvoice.setDocumentName(metadata.getInvoiceTypePa());
         
         if (metadata.getOriginalInvoice() != null) {
@@ -261,7 +261,10 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
             mustangInvoice.setDeliveryDate(deliveryDate);
         }
         
-        mustangInvoice.setSellerOrderReferencedDocumentID(metadata.getOrderNumber());
+        String order = metadata.getOrderNumber();
+        if (order != null && order.startsWith("KA"))
+        	order = order.replace("KA", "AB"); //TODO: Abhängig vom Kunden, falls KA = 1 kommt
+        mustangInvoice.setSellerOrderReferencedDocumentID(order);
         
         // Setze Sprache
         language = metadata.getLanguage();
@@ -328,7 +331,12 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
             id.setId(address.getGlnId());
             id.setScheme("0088");
             tradeParty.addGlobalID(id);
-        }
+        } else if (address.getDuns() != null && !address.getDuns().isEmpty()) {
+            SchemedID id = new SchemedID();
+            id.setId(address.getDuns());
+            id.setScheme("0060");
+            tradeParty.addGlobalID(id);
+        } 
 
         // Setze grundlegende Adressinformationen
         tradeParty.setName(address.getCompanyName1());
@@ -749,16 +757,18 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
                 summRabatt = summRabatt.multiply(packmenge).divide(quantity, 2, BigDecimal.ROUND_HALF_UP);
                 Allowance discountAllowance = new Allowance(summRabatt);
                 discountAllowance.setReason("Rabatt");
-                discountAllowance.setReasonCode("60");
+                if (!applusEinterface.equals("X"))
+                		discountAllowance.setReasonCode("60");
                 discountAllowance.setTaxPercent(product.getVATPercent());
                 item.addAllowance(discountAllowance); // Add allowance to the item
             }
-            
+            item.setId(internItem.getPosition());
             item.setProduct(product);
             item.setQuantity(quantity);
             item.setPrice(unitPrice);
             item.setBasisQuantity(packmenge);
             item.setTax(tax);
+            item.addReferencedLineID(internItem.getReferences().getOrderPosition());
             
             // Position zur Liste hinzufügen
             items.add(item);

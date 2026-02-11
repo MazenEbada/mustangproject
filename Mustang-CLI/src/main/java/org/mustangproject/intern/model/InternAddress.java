@@ -10,7 +10,9 @@ package org.mustangproject.intern.model;
  */
 public class InternAddress {
     private String glnId;
-    private String companyName1;
+    private String duns;
+
+	private String companyName1;
     private String companyName2;
     private String companyName3;
     private String countryIso;
@@ -34,6 +36,14 @@ public class InternAddress {
     private String paymentMethods;
 
     // Getter und Setter
+    public String getDuns() {
+		return duns;
+	}
+
+	public void setDuns(String duns) {
+		this.duns = duns;
+	}
+	
     public String getGlnId() {
         return glnId;
     }

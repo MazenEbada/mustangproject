@@ -100,6 +100,13 @@ public class XMLInvoiceExporter implements InvoiceExporter {
             serviceDateElem.setTextContent(metadata.getAdditionalData().get("SERVICE_DATE"));
             datumElement.appendChild(serviceDateElem);
         }
+
+        
+        if (metadata.getDeliveryDate() != null) {
+            Element serviceDateElem = doc.createElement("DELIVERYDATE");
+            serviceDateElem.setTextContent(metadata.getDeliveryDate().format(DATE_FORMATTER));
+            datumElement.appendChild(serviceDateElem);
+        }
         
         // BETRAG
         Element betragElement = doc.createElement("BETRAG");
@@ -204,6 +211,7 @@ public class XMLInvoiceExporter implements InvoiceExporter {
      */
     private void addAddressToXml(Document doc, Element parent, InternAddress address, String prefix) {
         addElement(doc, parent, prefix + "GLNID", address.getGlnId());
+        addElement(doc, parent, prefix + "DUNSNR", address.getDuns());
         addElement(doc, parent, prefix + "FIRMA1", address.getCompanyName1());
         addElement(doc, parent, prefix + "FIRMA2", address.getCompanyName2());
         addElement(doc, parent, prefix + "FIRMA3", address.getCompanyName3());

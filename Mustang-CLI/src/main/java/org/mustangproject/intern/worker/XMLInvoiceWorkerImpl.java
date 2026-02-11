@@ -9,6 +9,7 @@ import java.io.ByteArrayInputStream;
 import java.io.StringReader;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -62,7 +63,7 @@ public class XMLInvoiceWorkerImpl implements XMLInvoiceWorker {
             extractDeliveryAddress(doc, invoice);
             
             // Extrahieren und Setzen der manuellen Lieferadresse
-            extractManualDeliveryAddress(rechnungElement, invoice);
+            extractManualDeliveryAddress(doc, invoice);
             
             // Extrahieren und Setzen der Rechnungsadresse
             extractInvoiceAddress(doc, invoice);
@@ -139,6 +140,12 @@ public class XMLInvoiceWorkerImpl implements XMLInvoiceWorker {
                 ? getElementValue(adresseElement, "EGSTEUERNR") 
                 : getElementValue(firmaElement, "EGSTEUERNR"));
         
+
+        address.setDuns(getElementValue(adresseElement, "DUNSNR") != null 
+                && !getElementValue(adresseElement, "DUNSNR").isEmpty()
+                ? getElementValue(adresseElement, "DUNSNR") 
+                : getElementValue(firmaElement, "DUNSNR"));
+        
         address.setTaxNumber(getElementValue(firmaElement, "STEUERNUMMER"));
         address.setBic(getElementValue(bankElement, "SWIFT"));
         address.setIban(getElementValue(firmaElement, "IBAN"));
@@ -179,6 +186,12 @@ public class XMLInvoiceWorkerImpl implements XMLInvoiceWorker {
                 && !getElementValue(adresseElement, "EGSTEUERNR").isEmpty()
                 ? getElementValue(adresseElement, "EGSTEUERNR") 
                 : getElementValue(firmaElement, "EGSTEUERNR"));
+        
+
+        address.setDuns(getElementValue(adresseElement, "DUNSNR") != null 
+                && !getElementValue(adresseElement, "DUNSNR").isEmpty()
+                ? getElementValue(adresseElement, "DUNSNR") 
+                : getElementValue(firmaElement, "DUNSNR"));
         
         address.setTaxNumber(getElementValue(firmaElement, "STEUERNUMMER"));
         address.setBic(getElementValue(bankElement, "SWIFT"));
@@ -228,6 +241,12 @@ public class XMLInvoiceWorkerImpl implements XMLInvoiceWorker {
                     ? getElementValue(lAdresseElement, "EGSTEUERNR") 
                     : getElementValue(lFirmaElement, "EGSTEUERNR"));
             
+
+            address.setDuns(getElementValue(lAdresseElement, "DUNSNR") != null 
+                    && !getElementValue(lAdresseElement, "DUNSNR").isEmpty()
+                    ? getElementValue(lAdresseElement, "DUNSNR") 
+                    : getElementValue(lFirmaElement, "DUNSNR"));
+            
             address.setTaxNumber(getElementValue(lFirmaElement, "STEUERNUMMER"));
             address.setBic(getElementValue(lBankElement, "SWIFT"));
             address.setIban(getElementValue(lFirmaElement, "IBAN"));
@@ -239,6 +258,7 @@ public class XMLInvoiceWorkerImpl implements XMLInvoiceWorker {
             
             // Kopieren aller Felder von customerAddress zu deliveryAddress
             deliveryAddress.setGlnId(customerAddress.getGlnId());
+            deliveryAddress.setDuns(customerAddress.getDuns());
             deliveryAddress.setCompanyName1(customerAddress.getCompanyName1());
             deliveryAddress.setCompanyName2(customerAddress.getCompanyName2());
             deliveryAddress.setCompanyName3(customerAddress.getCompanyName3());
@@ -267,8 +287,30 @@ public class XMLInvoiceWorkerImpl implements XMLInvoiceWorker {
     /**
      * Extrahiert die manuelle Lieferadresse aus dem Rechnungelement und setzt sie im Invoice-Objekt
      */
-    private void extractManualDeliveryAddress(Element rechnungElement, InternInvoice invoice) {
-        InternAddress address = invoice.getManualDeliveryAddress();
+    private void extractManualDeliveryAddress(Document doc, InternInvoice invoice) {
+        
+    	Element lAdresseElement = getElement(doc, "customerLAdresse");
+        Element lFirmaElement = getElement(doc, "customerLFirma");
+        
+    	Element rechnungElement = getElement(doc, "rechnung");
+    	InternAddress address = invoice.getManualDeliveryAddress();
+    	
+    	if (getElementValue(rechnungElement, "LADRMANUELL") == null
+    		|| getElementValue(rechnungElement, "LADRMANUELL") == "0"
+    		|| getElementValue(rechnungElement, "LADRMANUELL") == "") {
+    		invoice.setManualDeliveryAddress(null); 
+    	}
+    	
+    	boolean lieferadresseExists = lAdresseElement != null && 
+                lAdresseElement.getElementsByTagName("*").getLength() > 0;
+        
+        String email;
+        if (lieferadresseExists) {
+        	email = getElementValue(lAdresseElement, "EMAIL");
+        } else {
+        	InternAddress customerAddress = invoice.getCustomerAddress();
+        	email = customerAddress.getEmail();
+        }
         
         address.setCompanyName1(getElementValue(rechnungElement, "LFIRMA"));
         address.setCompanyName2(getElementValue(rechnungElement, "LFIRMA2"));
@@ -282,9 +324,15 @@ public class XMLInvoiceWorkerImpl implements XMLInvoiceWorker {
         address.setStreet(getElementValue(rechnungElement, "LSTRASSE"));
         address.setFax(getElementValue(rechnungElement, "LTELEFAX"));
         address.setPhone(getElementValue(rechnungElement, "LTELEFON"));
-        address.setEmail(getElementValue(rechnungElement, "EMAIL"));
-        address.setVatId(getElementValue(rechnungElement, "USTID"));
-        address.setDunsNumber(getElementValue(rechnungElement, "DUNSNR"));
+        address.setEmail(email);
+        address.setDunsNumber(getElementValue(lFirmaElement, "DUNSNR"));
+        
+        address.setVatId(getElementValue(rechnungElement, "LEGSTEUERNR") != null 
+                && !getElementValue(rechnungElement, "LEGSTEUERNR").isEmpty()
+                ? getElementValue(rechnungElement, "LEGSTEUERNR") 
+                : getElementValue(lFirmaElement, "EGSTEUERNR"));
+        
+        
     }
     
     /**
@@ -305,6 +353,7 @@ public class XMLInvoiceWorkerImpl implements XMLInvoiceWorker {
             InternAddress address = invoice.getInvoiceAddress();
             
             address.setGlnId(getElementValue(rAdresseElement, "ANP_GLN"));
+            address.setDuns(getElementValue(rAdresseElement, "DUNSNR"));
             address.setCompanyName1(getElementValue(rAdresseElement, "FIRMA1"));
             address.setCompanyName2(getElementValue(rAdresseElement, "FIRMA2"));
             address.setCompanyName3(getElementValue(rAdresseElement, "FIRMA3"));
@@ -340,6 +389,7 @@ public class XMLInvoiceWorkerImpl implements XMLInvoiceWorker {
             
             // Kopieren aller Felder von customerAddress zu invoiceAddress
             invoiceAddress.setGlnId(customerAddress.getGlnId());
+            invoiceAddress.setDuns(customerAddress.getDuns());
             invoiceAddress.setCompanyName1(customerAddress.getCompanyName1());
             invoiceAddress.setCompanyName2(customerAddress.getCompanyName2());
             invoiceAddress.setCompanyName3(customerAddress.getCompanyName3());
@@ -480,21 +530,14 @@ public class XMLInvoiceWorkerImpl implements XMLInvoiceWorker {
         // Bestelldatum
         String orderDateStr = getElementValue(rechnungElement, "BESTELLDATUM");
         if (orderDateStr != null && !orderDateStr.isEmpty()) {
-            try {
-                metadata.setOrderDate(LocalDate.parse(orderDateStr, DATE_FORMATTER));
-            } catch (DateTimeParseException e) {
-                // Ignoriere Datumsfehler
-            }
+        	metadata.setOrderDate(LocalDateTime.parse(orderDateStr).toLocalDate());
         }
         
         // Liefertermin
         String deliveryDateStr = getElementValue(rechnungElement, "ANP_LIEFERTERMIN");
         if (deliveryDateStr != null && !deliveryDateStr.isEmpty()) {
-            try {
-                metadata.setDeliveryDate(LocalDate.parse(deliveryDateStr, DATE_FORMATTER));
-            } catch (DateTimeParseException e) {
-                // Ignoriere Datumsfehler
-            }
+        	metadata.setDeliveryDate(LocalDateTime.parse(deliveryDateStr).toLocalDate());
+            
         }
     }
     
