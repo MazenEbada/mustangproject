@@ -14,6 +14,7 @@ public class InternInvoiceTexts {
     private String customerText;
     private String footerText;
     private String headerText;
+    private String factoringText;
 
     // Getter und Setter
     public String getStandardText() {
@@ -54,5 +55,13 @@ public class InternInvoiceTexts {
 
     public void setHeaderText(String headerText) {
         this.headerText = headerText;
+    }
+
+    public String getFactoringText() {
+        return factoringText;
+    }
+
+    public void setFactoringText(String factoringText) {
+        this.factoringText = factoringText;
     }
 }

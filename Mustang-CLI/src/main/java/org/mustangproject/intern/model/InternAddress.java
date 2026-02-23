@@ -33,6 +33,7 @@ public class InternAddress {
     private String taxNumber;
     private String bic;
     private String iban;
+    private String accountName;
     private String paymentMethods;
 
     // Getter und Setter
@@ -218,6 +219,14 @@ public class InternAddress {
 
     public void setIban(String iban) {
         this.iban = iban;
+    }
+
+    public String getAccountName() {
+        return accountName;
+    }
+
+    public void setAccountName(String accountName) {
+        this.accountName = accountName;
     }
 
     public String getPaymentMethods() {

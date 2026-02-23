@@ -55,7 +55,10 @@ public class XMLInvoiceWorkerImpl implements XMLInvoiceWorker {
             
             // Extrahieren und Setzen der Verkäuferadresse
             extractSellerAddress(doc, invoice);
-            
+
+            // Factoring-Overrides aus stdtxtBP anwenden (falls ANP_BRIEFPAPIER = 1)
+            applyStdtxtBPOverrides(doc, invoice);
+
             // Extrahieren und Setzen der Kundenadresse
             extractCustomerAddress(doc, invoice);
             
@@ -453,6 +456,61 @@ public class XMLInvoiceWorkerImpl implements XMLInvoiceWorker {
         texts.setHeaderText(getElementValue(rechnungElement, "HTMLKOPFTEXT"));
     }
     
+    /**
+     * Prüft ob stdtxtBP-Element vorhanden ist und ANP_BRIEFPAPIER = 1.
+     * Falls ja, werden die Bankdaten, Steuer-IDs und der Kontoinhaber
+     * des Verkäufers mit den Factoring-Daten überschrieben.
+     */
+    private void applyStdtxtBPOverrides(Document doc, InternInvoice invoice) {
+        Element stdtxtBPElement = getElement(doc, "stdtxtBP");
+        if (stdtxtBPElement == null) {
+            return;
+        }
+
+        String briefpapier = getElementValue(stdtxtBPElement, "ANP_BRIEFPAPIER");
+        if (!"1".equals(briefpapier)) {
+            return;
+        }
+
+        InternAddress sellerAddress = invoice.getSellerAddress();
+
+        // IBAN überschreiben (Leerzeichen entfernen)
+        String iban = getElementValue(stdtxtBPElement, "ANP_IBAN");
+        if (iban != null) {
+            sellerAddress.setIban(iban.replaceAll("\\s+", ""));
+        }
+
+        // BIC überschreiben
+        String bic = getElementValue(stdtxtBPElement, "ANP_BANKBIC");
+        if (bic != null) {
+            sellerAddress.setBic(bic);
+        }
+
+        // USt-ID überschreiben
+        String ustId = getElementValue(stdtxtBPElement, "ANP_USTID");
+        if (ustId != null) {
+            sellerAddress.setVatId(ustId);
+        }
+
+        // Steuernummer überschreiben
+        String steuernummer = getElementValue(stdtxtBPElement, "ANP_STEUERNUMMER");
+        if (steuernummer != null) {
+            sellerAddress.setTaxNumber(steuernummer);
+        }
+
+        // Kontoinhaber setzen (AccountName im E-Rechnung)
+        String kontoinhaber = getElementValue(stdtxtBPElement, "ANP_KONTOINHABER");
+        if (kontoinhaber != null) {
+            sellerAddress.setAccountName(kontoinhaber);
+        }
+
+        // Factoring-Text als eigene Notiz speichern
+        String factoringText = getElementValue(stdtxtBPElement, "HTMLSTDTXT");
+        if (factoringText != null) {
+            invoice.getTexts().setFactoringText(factoringText);
+        }
+    }
+
     /**
      * Extrahiert die Zahlungsbedingungen aus dem XML und setzt sie im Invoice-Objekt
      */

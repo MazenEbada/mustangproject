@@ -367,7 +367,8 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
         BankDetails bankDetails = new BankDetails();
         bankDetails.setIBAN(address.getIban());
         bankDetails.setBIC(address.getBic());
-        bankDetails.setAccountName(address.getCompanyName1());
+        bankDetails.setAccountName(
+            address.getAccountName() != null ? address.getAccountName() : address.getCompanyName1());
         tradeParty.getBankDetails().add(bankDetails);
 
         // Für den Verkäufer (Typ "V") setze zusätzliche Informationen
@@ -597,6 +598,9 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
         if (textFields.get("KOPFTEXT") != null) {
             mustangInvoice.addNotes(Collections.singletonList(IncludedNote.introductionNote(textFields.get("KOPFTEXT"))));
         }
+        if (textFields.get("FACTORINGTEXT") != null) {
+            mustangInvoice.addNotes(Collections.singletonList(IncludedNote.generalNote(textFields.get("FACTORINGTEXT"))));
+        }
     }
 
     /**
@@ -624,8 +628,11 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
             if (texts.getHeaderText() != null && !texts.getHeaderText().isEmpty()) {
                 textFields.put("KOPFTEXT", texts.getHeaderText());
             }
+            if (texts.getFactoringText() != null && !texts.getFactoringText().isEmpty()) {
+                textFields.put("FACTORINGTEXT", texts.getFactoringText());
+            }
         }
-        
+
         return textFields;
     }
 
