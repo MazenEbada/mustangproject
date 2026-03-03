@@ -995,7 +995,19 @@ public class XMLInvoiceWorkerImpl implements XMLInvoiceWorker {
                 // Ignoriere Zahlenfehler
             }
         }
-        
+
+        // Menge in PREISME (ANP_MENGEINPREISME): MENGE umgerechnet von VKME in PREISME via udf_ConvertMe.
+        // Nur vorhanden wenn VKME != PREISME (nicht bei allen Mandanten).
+        // Ermöglicht korrekte Preisberechnung ohne die Mengenumrechnung hier nachzubilden.
+        String mengeInPreisMeStr = getElementValue(element, "ANP_MENGEINPREISME");
+        if (mengeInPreisMeStr != null && !mengeInPreisMeStr.isEmpty()) {
+            try {
+                amounts.setMengeInPreisMe(new BigDecimal(mengeInPreisMeStr));
+            } catch (NumberFormatException e) {
+                // Ignoriere Zahlenfehler
+            }
+        }
+
         // Steuerinformationen
         InternItemTax tax = amounts.getTax();
         

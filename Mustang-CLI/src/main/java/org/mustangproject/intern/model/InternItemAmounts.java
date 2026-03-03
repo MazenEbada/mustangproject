@@ -26,6 +26,7 @@ public class InternItemAmounts {
     private BigDecimal discountAmount;
     private BigDecimal discountAmount2;
     private BigDecimal unitRevenue;
+    private BigDecimal mengeInPreisMe; // ANP_MENGEINPREISME: MENGE umgerechnet in PREISME (nur wenn VKME != PREISME)
     private InternItemTax tax;
 
     public InternItemAmounts() {
@@ -151,6 +152,14 @@ public class InternItemAmounts {
 
     public void setUnitRevenue(BigDecimal unitRevenue) {
         this.unitRevenue = unitRevenue;
+    }
+
+    public BigDecimal getMengeInPreisMe() {
+        return mengeInPreisMe;
+    }
+
+    public void setMengeInPreisMe(BigDecimal mengeInPreisMe) {
+        this.mengeInPreisMe = mengeInPreisMe;
     }
 
     public InternItemTax getTax() {

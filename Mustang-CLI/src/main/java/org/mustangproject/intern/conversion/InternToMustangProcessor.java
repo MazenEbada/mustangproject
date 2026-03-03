@@ -50,14 +50,14 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
         Map.entry("cm2", "CMK"),
         Map.entry("g", "GRM"),
         Map.entry("h", "HUR"),
-        Map.entry("Karton", "CT"),
+        Map.entry("Karton", "XCT"),
         Map.entry("kg", "KGM"),
         Map.entry("kPa", "KPA"),
         Map.entry("l", "LTR"),
         Map.entry("m", "MTR"),
         Map.entry("m2", "MTK"),
-        Map.entry("mbar", "MBAR"),
-        Map.entry("mi", "MILE"),
+        Map.entry("mbar", "MBR"),
+        Map.entry("mi", "SMI"),
         Map.entry("mm", "MMT"),
         Map.entry("mmWS", "MMWS"),
         Map.entry("Pa", "PAL"),
@@ -686,20 +686,35 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
             // Menge und Preis
             BigDecimal quantity = internItem.getQuantity();
             if (quantity == null) quantity = BigDecimal.ONE; // Fallback
-            
-            BigDecimal unitPrice = null;
+
             InternItemAmounts amounts = internItem.getAmounts();
-            if (amounts != null) {
-                unitPrice = amounts.getNet();
-            }
-            if (unitPrice == null) unitPrice = BigDecimal.ZERO; // Fallback
-            
-            BigDecimal packmenge = null;
-            if (amounts != null) {
+
+            BigDecimal packmenge = BigDecimal.ONE;
+            if (amounts != null && amounts.getPackageQuantity() != null
+                    && amounts.getPackageQuantity().compareTo(BigDecimal.ZERO) != 0) {
                 packmenge = amounts.getPackageQuantity();
             }
-            if (packmenge == null || packmenge.compareTo(BigDecimal.ZERO) == 0) {
-                packmenge = BigDecimal.ONE; // Fallback
+
+            BigDecimal net = amounts != null ? amounts.getNet() : null;
+            BigDecimal mengeInPreisMe = amounts != null ? amounts.getMengeInPreisMe() : null;
+
+            BigDecimal unitPrice;
+            BigDecimal basisQty;
+
+            if (mengeInPreisMe != null && mengeInPreisMe.compareTo(BigDecimal.ZERO) != 0
+                    && quantity.compareTo(BigDecimal.ZERO) != 0
+                    && net != null) {
+                // ANP_MENGEINPREISME vorhanden: VKME != PREISME
+                // Preis von PREISME-Basis auf VKME umrechnen:
+                //   unitPrice = NETTO × ANP_MENGEINPREISME / (MENGE × PACKMENGE)
+                // Damit gilt: MENGE × unitPrice = ANP_MENGEINPREISME × NETTO / PACKMENGE = korrekter Zeilenbetrag
+                unitPrice = net.multiply(mengeInPreisMe)
+                              .divide(quantity.multiply(packmenge), 10, BigDecimal.ROUND_HALF_UP);
+                basisQty = BigDecimal.ONE;
+            } else {
+                // Fallback: bisheriges Verhalten (VKME == PREISME oder kein ANP_MENGEINPREISME)
+                unitPrice = net != null ? net : BigDecimal.ZERO;
+                basisQty = packmenge;
             }
             
             // Umsatzsteuer
@@ -761,7 +776,7 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
             // Rabatte als Allowances hinzufügen
             BigDecimal summRabatt = rabatt1.add(rabatt2).add(mrabatt);
             if (summRabatt.compareTo(BigDecimal.ZERO) > 0) {
-                summRabatt = summRabatt.multiply(packmenge).divide(quantity, 2, BigDecimal.ROUND_HALF_UP);
+                summRabatt = summRabatt.multiply(packmenge).divide(quantity, 4, BigDecimal.ROUND_HALF_UP);
                 Allowance discountAllowance = new Allowance(summRabatt);
                 discountAllowance.setReason("Rabatt");
                 if (!applusEinterface.equals("X"))
@@ -773,7 +788,7 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
             item.setProduct(product);
             item.setQuantity(quantity);
             item.setPrice(unitPrice);
-            item.setBasisQuantity(packmenge);
+            item.setBasisQuantity(basisQty);
             item.setTax(tax);
             item.addReferencedLineID(internItem.getReferences().getOrderPosition());
             
