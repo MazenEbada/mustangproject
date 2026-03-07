@@ -428,6 +428,7 @@ public class XMLInvoiceExporter implements InvoiceExporter {
         
         addElement(doc, parent, "MENGE", item.getQuantity());
         addElement(doc, parent, "POSITION", item.getPosition());
+        addElement(doc, parent, "USERPOS", item.getUserPos());
         addElement(doc, parent, "VKME", item.getUnit());
         addElement(doc, parent, "MTZART", item.getMaterialCostType());
         addElement(doc, parent, "MTZSUM", item.getMaterialCostAmount());

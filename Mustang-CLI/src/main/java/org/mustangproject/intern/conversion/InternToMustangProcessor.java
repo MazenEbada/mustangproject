@@ -683,6 +683,11 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
         }
         
         for (InternInvoiceItem internItem : internItems) {
+            // DONTPRINT: Position komplett überspringen (nicht anzeigen, nicht berechnen)
+            if (Boolean.TRUE.equals(internItem.getDontPrint())) {
+                continue;
+            }
+
             // Menge und Preis
             BigDecimal quantity = internItem.getQuantity();
             if (quantity == null) quantity = BigDecimal.ONE; // Fallback
@@ -765,31 +770,43 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
             
             product.setVATPercent(taxPercent);
             
-            // Einheit mappgen
+            // Einheit mappen
             String unitType = internItem.getUnit();
-            String unitCode = UNIT_CODE_MAPPING.getOrDefault(unitType, "C62"); // Default to "Piece"
+            String unitCode = (unitType != null) ? UNIT_CODE_MAPPING.getOrDefault(unitType, "C62") : "C62";
             product.setUnit(unitCode);
             
             // Erstelle die Position
             Item item = new Item();
             
-            // Rabatte als Allowances hinzufügen
-            BigDecimal summRabatt = rabatt1.add(rabatt2).add(mrabatt);
-            if (summRabatt.compareTo(BigDecimal.ZERO) > 0) {
-                summRabatt = summRabatt.multiply(packmenge).divide(quantity, 4, BigDecimal.ROUND_HALF_UP);
-                Allowance discountAllowance = new Allowance(summRabatt);
-                discountAllowance.setReason("Rabatt");
-                if (!applusEinterface.equals("X"))
-                		discountAllowance.setReasonCode("60");
-                discountAllowance.setTaxPercent(product.getVATPercent());
-                item.addAllowance(discountAllowance); // Add allowance to the item
+            // Rabatte als Allowances hinzufügen (nicht bei DONTPRINTPRICE)
+            if (!Boolean.TRUE.equals(internItem.getDontPrintPrice())) {
+                BigDecimal summRabatt = rabatt1.add(rabatt2).add(mrabatt);
+                if (summRabatt.compareTo(BigDecimal.ZERO) > 0) {
+                    summRabatt = summRabatt.multiply(packmenge).divide(quantity, 10, BigDecimal.ROUND_HALF_UP);
+                    Allowance discountAllowance = new Allowance(summRabatt);
+                    discountAllowance.setReason("Rabatt");
+                    if (!applusEinterface.equals("X"))
+                    		discountAllowance.setReasonCode("60");
+                    discountAllowance.setTaxPercent(product.getVATPercent());
+                    item.addAllowance(discountAllowance); // Add allowance to the item
+                }
             }
-            item.setId(internItem.getPosition());
+            // USERPOS als LineID verwenden, Fallback auf POSITION
+            String lineId = internItem.getUserPos() != null ? internItem.getUserPos() : internItem.getPosition();
+            item.setId(lineId);
             item.setProduct(product);
             item.setQuantity(quantity);
-            item.setPrice(unitPrice);
-            item.setBasisQuantity(basisQty);
-            item.setTax(tax);
+
+            // DONTPRINTPRICE: Position anzeigen, aber ohne Preis
+            if (Boolean.TRUE.equals(internItem.getDontPrintPrice())) {
+                item.setPrice(BigDecimal.ZERO);
+                item.setBasisQuantity(BigDecimal.ONE);
+                item.setTax(BigDecimal.ZERO);
+            } else {
+                item.setPrice(unitPrice);
+                item.setBasisQuantity(basisQty);
+                item.setTax(tax);
+            }
             item.addReferencedLineID(internItem.getReferences().getOrderPosition());
             
             // Position zur Liste hinzufügen

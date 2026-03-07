@@ -28,6 +28,7 @@ public class InternInvoiceItem {
     private LocalDate serviceDate;
     private BigDecimal quantity;
     private String position;
+    private String userPos;
     private String unit;
     private String materialCostType;
     private BigDecimal materialCostAmount;
@@ -154,6 +155,14 @@ public class InternInvoiceItem {
 
     public void setPosition(String position) {
         this.position = position;
+    }
+
+    public String getUserPos() {
+        return userPos;
+    }
+
+    public void setUserPos(String userPos) {
+        this.userPos = userPos;
     }
 
     public String getUnit() {

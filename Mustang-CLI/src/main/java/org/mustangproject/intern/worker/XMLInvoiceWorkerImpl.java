@@ -1107,19 +1107,19 @@ public class XMLInvoiceWorkerImpl implements XMLInvoiceWorker {
         // DontPrint
         String dontPrintStr = getElementValue(element, "DONTPRINT");
         if (dontPrintStr != null) {
-            item.setDontPrint(Boolean.valueOf(dontPrintStr));
+            item.setDontPrint(parseBoolean(dontPrintStr));
         }
-        
+
         // DontPrintPrice
         String dontPrintPriceStr = getElementValue(element, "DONTPRINTPRICE");
         if (dontPrintPriceStr != null) {
-            item.setDontPrintPrice(Boolean.valueOf(dontPrintPriceStr));
+            item.setDontPrintPrice(parseBoolean(dontPrintPriceStr));
         }
-        
+
         // PrintPosition
         String printPositionStr = getElementValue(element, "POSDRUCKEN");
         if (printPositionStr != null) {
-            item.setPrintPosition(Boolean.valueOf(printPositionStr));
+            item.setPrintPosition(parseBoolean(printPositionStr));
         }
         
         // Inventar
@@ -1128,7 +1128,7 @@ public class XMLInvoiceWorkerImpl implements XMLInvoiceWorker {
         // IsBom
         String isBomStr = getElementValue(element, "ISSTUELI");
         if (isBomStr != null) {
-            item.setIsBom(Boolean.valueOf(isBomStr));
+            item.setIsBom(parseBoolean(isBomStr));
         }
         
         // Leistungsdatum
@@ -1153,7 +1153,10 @@ public class XMLInvoiceWorkerImpl implements XMLInvoiceWorker {
         
         // Position
         item.setPosition(getElementValue(element, "POSITION"));
-        
+
+        // Benutzerposition (USERPOS)
+        item.setUserPos(getElementValue(element, "USERPOS"));
+
         // Verkaufsmengeneinheit
         item.setUnit(getElementValue(element, "VKME"));
         
@@ -1171,6 +1174,15 @@ public class XMLInvoiceWorkerImpl implements XMLInvoiceWorker {
         }
     }
     
+    /**
+     * Hilfsmethode zum Parsen von Boolean-Werten aus APPlus-XML.
+     * Unterstützt sowohl "true"/"false" als auch "1"/"0".
+     */
+    private static Boolean parseBoolean(String value) {
+        if (value == null) return null;
+        return "1".equals(value.trim()) || "true".equalsIgnoreCase(value.trim());
+    }
+
     /**
      * Hilfsmethode zum sicheren Abrufen des Wertes eines XML-Elements.
      */
