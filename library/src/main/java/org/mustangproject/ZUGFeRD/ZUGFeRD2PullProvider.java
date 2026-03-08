@@ -158,7 +158,7 @@ public class ZUGFeRD2PullProvider implements IXMLProvider {
 			xml += "</ram:SpecifiedLegalOrganization>";
 		}
 
-		if ((party.getContact() != null) && (isSender || profile == Profiles.getByName("EN16931") || profile == Profiles.getByName("Extended") || profile == Profiles.getByName("XRechnung"))) {
+		if ((party.getContact() != null) && (!isShipToTradeParty) && (isSender || profile == Profiles.getByName("EN16931") || profile == Profiles.getByName("Extended") || profile == Profiles.getByName("XRechnung"))) {
 			xml += "<ram:DefinedTradeContact>";
 			if (party.getContact().getName() != null) {
 				xml += "<ram:PersonName>"
