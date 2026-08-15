@@ -17,6 +17,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.mustangproject.applus.APplusInterface;
+import org.mustangproject.validator.ZUGFeRDValidator;
 public class APplusActions {
 	
     
@@ -81,6 +82,44 @@ public class APplusActions {
 
 	    return result;
 	   
+	}
+
+	/**
+	 * Validiert eine bereits erzeugte E-Rechnung (XRechnung / ZUGFeRD) und gibt den
+	 * Validierungsbericht als XML-String zurueck.
+	 *
+	 * Bewusst NICHT ueber "--action validate" geloest: die Standard-Action schreibt den
+	 * Bericht nach System.out (vom Wrapper per inheritIO verschluckt) und ruft bei einer
+	 * ungueltigen Rechnung System.exit(-1) auf, was im Wrapper zu einer RuntimeException
+	 * fuehrt. Als Custom-Action liefern wir den Bericht regulaer zurueck; "ungueltig" ist
+	 * ein Ergebnis, kein Fehler.
+	 *
+	 * @param args CLI-Argumente, erwartet --input-xml, optional --no-notices
+	 * @return Validierungsbericht als XML (enthaelt &lt;summary status="valid|invalid"/&gt;)
+	 */
+	public static String handleValidate(String[] args) throws Exception {
+	    String inputXML = getArgValue(args, "--input-xml");
+	    if (inputXML == null) {
+	        System.err.println("Error: --input-xml parameter is required for 'VALIDATE'.");
+	        System.exit(1);
+	    }
+
+	    File inputFile = new File(inputXML);
+	    if (!inputFile.exists()) {
+	        System.err.println("Error: input file not found: " + inputXML);
+	        System.exit(1);
+	    }
+
+	    ZUGFeRDValidator validator = new ZUGFeRDValidator();
+	    for (String arg : args) {
+	        if (arg.equalsIgnoreCase("--no-notices")) {
+	            validator.disableNotices();
+	            break;
+	        }
+	    }
+
+	    // Kein System.exit bei ungueltiger Rechnung - der Bericht IST das Ergebnis.
+	    return validator.validate(inputFile.getAbsolutePath());
 	}
 
 	public static String handleGenerateSimple(String[] args) throws Exception {
