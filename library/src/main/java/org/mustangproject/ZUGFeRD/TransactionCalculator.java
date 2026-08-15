@@ -1,10 +1,18 @@
 package org.mustangproject.ZUGFeRD;
 
 import static java.math.BigDecimal.ZERO;
+import static org.mustangproject.util.StringUtils.isNotBlank;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /***
@@ -59,15 +67,48 @@ public class TransactionCalculator implements IAbsoluteValueProvider {
 	 */
 	protected BigDecimal getChargesForPercent(BigDecimal percent) {
 		IZUGFeRDAllowanceCharge[] charges = trans.getZFCharges();
-		return sumAllowanceCharge(percent, charges);
+		BigDecimal rv = sumAllowanceCharge(percent, charges);
+		IZUGFeRDLogisticsServiceCharge[] logisticsCharges = trans.getZFLogisticsServiceCharges();
+		rv = rv.add(sumAllowanceCharge(percent, logisticsCharges));
+		return rv;
+	}
+
+
+	/**
+	 * Returns information about every tax that is involved in the current transaction.
+	 *
+	 * @return transaction taxes.
+	 */
+	public Set<VATAmount> getTaxDetails() {
+		return getVATPercentAmountMap().entrySet().stream()
+			.map(entry ->
+				new VATAmount(
+					entry.getValue().getBasis(),
+					entry.getValue().getCalculated(),
+					entry.getValue().getCategoryCode()
+				).setApplicablePercent(entry.getKey())
+			)
+			.collect(Collectors.toSet());
 	}
 
 	private BigDecimal sumAllowanceCharge(BigDecimal percent, IZUGFeRDAllowanceCharge[] charges) {
 		BigDecimal res = BigDecimal.ZERO;
-		if ((charges != null) && (charges.length > 0)) {
+		if (charges != null) {
 			for (IZUGFeRDAllowanceCharge currentCharge : charges) {
-				if ((percent == null) || (currentCharge.getTaxPercent().compareTo(percent) == 0)) {
+				if (percent == null || currentCharge.getTaxRateApplicablePercent().compareTo(percent) == 0) {
 					res = res.add(currentCharge.getTotalAmount(this));
+				}
+			}
+		}
+		return res;
+	}
+
+	private BigDecimal sumAllowanceCharge(BigDecimal percent, IZUGFeRDLogisticsServiceCharge[] charges) {
+		BigDecimal res = BigDecimal.ZERO;
+		if (charges != null) {
+			for (IZUGFeRDLogisticsServiceCharge currentCharge : charges) {
+				if (percent == null || currentCharge.getTaxRateApplicablePercent().compareTo(percent) == 0) {
+					res = res.add(currentCharge.getAppliedAmount());
 				}
 			}
 		}
@@ -91,17 +132,14 @@ public class TransactionCalculator implements IAbsoluteValueProvider {
 	}
 
 	private String getAllowanceChargeReasonForPercent(BigDecimal percent, IZUGFeRDAllowanceCharge[] charges) {
-		String res = " ";
-		if ((charges != null) && (charges.length > 0)) {
-			for (IZUGFeRDAllowanceCharge currentCharge : charges) {
-				if ((percent == null) || (currentCharge.getTaxPercent().compareTo(percent) == 0)
-					&& currentCharge.getReason() != null) {
-					res += currentCharge.getReason() + " ";
-				}
-			}
+		if (charges == null) {
+			return "";
 		}
-		res = res.substring(0, res.length() - 1);
-		return res;
+		return Arrays.stream(charges)
+			.filter(currentCharge -> percent == null || currentCharge.getTaxRateApplicablePercent().compareTo(percent) == 0)
+			.map(IZUGFeRDAllowanceCharge::getReason)
+			.filter(Objects::nonNull)
+			.collect(Collectors.joining(" "));
 	}
 
 	/***
@@ -133,12 +171,15 @@ public class TransactionCalculator implements IAbsoluteValueProvider {
 
 	/***
 	 * returns the total net value of all items, without document level
-	 * charges/allowances
+	 * charges/allowances. For sub invoice lines only DETAIL lines are summed,
+	 * GROUP and INFORMATION lines are ignored.
 	 *
 	 * @return item sum
 	 */
 	protected BigDecimal getTotal() {
-		BigDecimal dec = Stream.of(trans.getZFItems()).map(LineCalculator::new)
+		BigDecimal dec = Stream.of(trans.getZFItems())
+			.filter(IZUGFeRDExportableItem::isCalculationRelevant)
+			.map(LineCalculator::new)
 			.map(LineCalculator::getItemTotalNetAmount).reduce(ZERO, BigDecimal::add);
 		return dec;
 	}
@@ -167,18 +208,25 @@ public class TransactionCalculator implements IAbsoluteValueProvider {
 		final String vatDueDateTypeCode = trans.getVATDueDateTypeCode();
 
 		for (IZUGFeRDExportableItem currentItem : trans.getZFItems()) {
+			// skip GROUP and INFORMATION lines for sub invoice lines
+			if (!currentItem.isCalculationRelevant()) {
+				continue;
+			}
 			BigDecimal percent = null;
-			if (currentItem.getProduct()!=null)
-			{
-				percent=currentItem.getProduct().getVATPercent();
+			if (currentItem.getProduct() != null) {
+				percent = currentItem.getProduct().getVATPercent();
 			}
 			if (percent != null) {
-				LineCalculator lc = new LineCalculator(currentItem);
+				LineCalculator lc = currentItem.getCalculation();
 				VATAmount itemVATAmount = new VATAmount(lc.getItemTotalNetAmount(), lc.getItemTotalVATAmount(),
 					currentItem.getProduct().getTaxCategoryCode(), vatDueDateTypeCode);
 				String reasonText = currentItem.getProduct().getTaxExemptionReason();
 				if (reasonText != null) {
 					itemVATAmount.setVatExemptionReasonText(reasonText);
+				}
+				String reasonCode = currentItem.getProduct().getTaxExemptionReasonCode();
+				if (reasonCode != null) {
+					itemVATAmount.setVatExemptionReasonCode(reasonCode);
 				}
 				VATAmount current = hm.get(percent.stripTrailingZeros());
 				if (current == null) {
@@ -190,14 +238,14 @@ public class TransactionCalculator implements IAbsoluteValueProvider {
 		}
 
 		IZUGFeRDAllowanceCharge[] charges = trans.getZFCharges();
-		if ((charges != null) && (charges.length > 0)) {
+		if (charges != null) {
 			for (IZUGFeRDAllowanceCharge currentCharge : charges) {
-				BigDecimal taxPercent = currentCharge.getTaxPercent();
+				BigDecimal taxPercent = currentCharge.getTaxRateApplicablePercent();
 				if (taxPercent != null) {
 					VATAmount theAmount = hm.get(taxPercent.stripTrailingZeros());
 					if (theAmount == null) {
 						theAmount = new VATAmount(BigDecimal.ZERO, BigDecimal.ZERO,
-							currentCharge.getCategoryCode() != null ? currentCharge.getCategoryCode() : "S",
+							currentCharge.getTaxCategoryCode() != null ? currentCharge.getTaxCategoryCode() : "S",
 							vatDueDateTypeCode);
 					}
 					theAmount.setBasis(theAmount.getBasis().add(currentCharge.getTotalAmount(this)));
@@ -208,14 +256,14 @@ public class TransactionCalculator implements IAbsoluteValueProvider {
 			}
 		}
 		IZUGFeRDAllowanceCharge[] allowances = trans.getZFAllowances();
-		if ((allowances != null) && (allowances.length > 0)) {
+		if (allowances != null) {
 			for (IZUGFeRDAllowanceCharge currentAllowance : allowances) {
-				BigDecimal taxPercent = currentAllowance.getTaxPercent();
+				BigDecimal taxPercent = currentAllowance.getTaxRateApplicablePercent();
 				if (taxPercent != null) {
 					VATAmount theAmount = hm.get(taxPercent.stripTrailingZeros());
 					if (theAmount == null) {
 						theAmount = new VATAmount(BigDecimal.ZERO, BigDecimal.ZERO,
-							currentAllowance.getCategoryCode() != null ? currentAllowance.getCategoryCode() : "S",
+							currentAllowance.getTaxCategoryCode() != null ? currentAllowance.getTaxCategoryCode() : "S",
 							vatDueDateTypeCode);
 					}
 					theAmount.setBasis(theAmount.getBasis().subtract(currentAllowance.getTotalAmount(this)));
@@ -226,8 +274,128 @@ public class TransactionCalculator implements IAbsoluteValueProvider {
 				}
 			}
 		}
+		IZUGFeRDLogisticsServiceCharge[] logisticCharges = trans.getZFLogisticsServiceCharges();
+		if (logisticCharges != null) {
+			for (IZUGFeRDLogisticsServiceCharge currentCharge : logisticCharges) {
+				BigDecimal taxPercent = currentCharge.getTaxRateApplicablePercent();
+				if (taxPercent != null) {
+					VATAmount theAmount = hm.get(taxPercent.stripTrailingZeros());
+					if (theAmount == null) {
+						theAmount = new VATAmount(BigDecimal.ZERO, BigDecimal.ZERO,
+							currentCharge.getTaxCategoryCode() != null ? currentCharge.getTaxCategoryCode() : "S",
+							vatDueDateTypeCode);
+					}
+					theAmount.setBasis(theAmount.getBasis().add(currentCharge.getAppliedAmount()));
+					BigDecimal factor = taxPercent.divide(new BigDecimal(100));
+					theAmount.setCalculated(theAmount.getBasis().multiply(factor));
+					hm.put(taxPercent.stripTrailingZeros(), theAmount);
+				}
+			}
+		}
 
 		return hm;
+	}
+
+	protected List<VATAmount> getVATAmountList() {
+		final List<VATAmount> vatAmounts = new ArrayList<>();
+		final String vatDueDateTypeCode = this.trans.getVATDueDateTypeCode();
+		for (final IZUGFeRDExportableItem currentItem : this.trans.getZFItems()) {
+			// skip GROUP and INFORMATION lines for sub invoice lines
+			if (!currentItem.isCalculationRelevant()) {
+				continue;
+			}
+			BigDecimal percent = null;
+			if (currentItem.getProduct() != null) {
+				percent = currentItem.getProduct().getVATPercent();
+			}
+			if (percent == null) {
+				percent = ZERO;
+			}
+			final LineCalculator lc = currentItem.getCalculation();
+			final VATAmount itemVATAmount = new VATAmount(lc.getItemTotalNetAmount(), lc.getItemTotalVATAmount(),
+				currentItem.getProduct().getTaxCategoryCode(), vatDueDateTypeCode, percent);
+			final String reasonText = currentItem.getProduct().getTaxExemptionReason();
+			if (reasonText != null) {
+				itemVATAmount.setVatExemptionReasonText(reasonText);
+			}
+			final String reasonCode = currentItem.getProduct().getTaxExemptionReasonCode();
+			if (reasonCode != null) {
+				itemVATAmount.setVatExemptionReasonCode(reasonCode);
+			}
+			final Optional<VATAmount> currentVatAmount = this.getCurrentVatAmount(vatAmounts, currentItem.getProduct().getTaxCategoryCode(), percent);
+			if (currentVatAmount.isEmpty()) {
+				vatAmounts.add(itemVATAmount);
+			} else {
+				this.mergeAdding(currentVatAmount.get(), itemVATAmount);
+			}
+		}
+
+		final IZUGFeRDAllowanceCharge[] charges = this.trans.getZFCharges();
+		if (charges != null) {
+			for (final IZUGFeRDAllowanceCharge currentCharge : charges) {
+				final BigDecimal taxPercent = currentCharge.getTaxRateApplicablePercent();
+				if (taxPercent != null) {
+					final String vatCategoryCode = currentCharge.getTaxCategoryCode() != null ? currentCharge.getTaxCategoryCode() : "S";
+					final Optional<VATAmount> currentChargeVatAmount = this.getCurrentVatAmount(vatAmounts, vatCategoryCode, taxPercent);
+					final BigDecimal chargeBasis = currentCharge.getTotalAmount(this);
+					final VATAmount chargeVatAmount = new VATAmount(chargeBasis, chargeBasis.multiply(taxPercent.divide(new BigDecimal(100))), vatCategoryCode,
+						vatDueDateTypeCode, taxPercent);
+					if (currentChargeVatAmount.isEmpty()) {
+						vatAmounts.add(chargeVatAmount);
+					} else {
+						this.mergeAdding(currentChargeVatAmount.get(), chargeVatAmount);
+					}
+				}
+			}
+		}
+		final IZUGFeRDAllowanceCharge[] allowances = this.trans.getZFAllowances();
+		if (allowances != null) {
+			for (final IZUGFeRDAllowanceCharge currentAllowance : allowances) {
+				final BigDecimal taxPercent = currentAllowance.getTaxRateApplicablePercent();
+				if (taxPercent != null) {
+					final String vatCategoryCode = currentAllowance.getTaxCategoryCode() != null ? currentAllowance.getTaxCategoryCode() : "S";
+					final Optional<VATAmount> currentAllowanceVatAmount = this.getCurrentVatAmount(vatAmounts, vatCategoryCode, taxPercent);
+					final BigDecimal allowanceNegativeBasis = currentAllowance.getTotalAmount(this).multiply(BigDecimal.valueOf(-1));
+					final VATAmount allowanceVATAmount = new VATAmount(allowanceNegativeBasis,
+						allowanceNegativeBasis.multiply(taxPercent.divide(new BigDecimal(100))),
+						currentAllowance.getTaxCategoryCode() != null ? currentAllowance.getTaxCategoryCode() : "S",
+						vatDueDateTypeCode, taxPercent);
+					if (currentAllowanceVatAmount.isEmpty()) {
+						vatAmounts.add(allowanceVATAmount);
+					} else {
+						this.mergeAdding(currentAllowanceVatAmount.get(), allowanceVATAmount);
+					}
+				}
+			}
+		}
+		final IZUGFeRDLogisticsServiceCharge[] logisticsCharges = this.trans.getZFLogisticsServiceCharges();
+		if (logisticsCharges != null) {
+			for (final IZUGFeRDLogisticsServiceCharge currentCharge : logisticsCharges) {
+				final BigDecimal taxPercent = currentCharge.getTaxRateApplicablePercent();
+				if (taxPercent != null) {
+					final String vatCategoryCode = currentCharge.getTaxCategoryCode() != null ? currentCharge.getTaxCategoryCode() : "S";
+					final Optional<VATAmount> currentChargeVatAmount = this.getCurrentVatAmount(vatAmounts, vatCategoryCode, taxPercent);
+					final BigDecimal chargeBasis = currentCharge.getAppliedAmount();
+					final VATAmount chargeVatAmount = new VATAmount(chargeBasis, chargeBasis.multiply(taxPercent.divide(new BigDecimal(100))), vatCategoryCode, vatDueDateTypeCode, taxPercent);
+					if (currentChargeVatAmount.isEmpty()) {
+						vatAmounts.add(chargeVatAmount);
+					} else {
+						this.mergeAdding(currentChargeVatAmount.get(), chargeVatAmount);
+					}
+				}
+			}
+		}
+		return vatAmounts;
+	}
+
+	public void mergeAdding(VATAmount vatAmount, VATAmount toAdd) {
+		vatAmount.setBasis(vatAmount.getBasis().add(toAdd.getBasis()));
+		vatAmount.setCalculated(vatAmount.getCalculated().add(toAdd.getCalculated()));
+		if (isNotBlank(toAdd.getVatExemptionReasonText())) {
+			Optional.ofNullable(vatAmount.getVatExemptionReasonText()).filter(reasonText -> !reasonText.equals(toAdd.getVatExemptionReasonText())).ifPresentOrElse(
+				text -> vatAmount.setVatExemptionReasonText(String.join(", ", text, toAdd.getVatExemptionReasonText())),
+				() -> vatAmount.setVatExemptionReasonText(toAdd.getVatExemptionReasonText()));
+		}
 	}
 
 	@Override
@@ -241,6 +409,14 @@ public class TransactionCalculator implements IAbsoluteValueProvider {
 
 	public BigDecimal getAllowanceTotal() {
 		return getAllowancesForPercent(null).setScale(2, RoundingMode.HALF_UP);
+	}
+
+	private Optional<VATAmount> getCurrentVatAmount(List<VATAmount> vatAmounts, String vatCategoryCode, BigDecimal percentage) {
+		return vatAmounts.stream()
+			.filter(va -> Objects.equals(vatCategoryCode, va.getCategoryCode())
+				&& Optional.ofNullable(percentage).map(p -> va.getApplicablePercent() == null && p == null || p.compareTo(va.getApplicablePercent()) == 0)
+				.orElse(true))
+			.findFirst();
 	}
 
 	public BigDecimal getDuePayable() {

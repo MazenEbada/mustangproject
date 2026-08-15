@@ -5,69 +5,200 @@ package org.mustangproject;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import org.mustangproject.ZUGFeRD.TransactionCalculator;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.mustangproject.ZUGFeRD.VATAmount;
 
 import java.io.Serializable;
 import java.math.BigDecimal;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonInclude(JsonInclude.Include.NON_EMPTY)
+/***
+ * This is the invoice but with redundant information, i.e. total amount etc.
+ * It has a calculate function which overwrites this total amount but fundamentally
+ * it's useful e.g. for imported invoices, because they may have diverging
+ * amounts, and some users are interested in retrieving the original ones
+ */
 public class CalculatedInvoice extends Invoice implements Serializable {
 
-	protected BigDecimal lineTotalAmount=null;
-	protected BigDecimal duePayable=null;
-	protected BigDecimal grandTotal=null;
-	protected BigDecimal taxBasis=null;
+	private static final long serialVersionUID = 1L;
 
-    public void calculate() {
-        TransactionCalculator tc=new TransactionCalculator(this);
-        grandTotal=tc.getGrandTotal();
-		lineTotalAmount=tc.getValue();
-		duePayable=tc.getDuePayable();
-		taxBasis= tc.getTaxBasis();
-    }
+	/***
+	 * de factor the total net amount
+	 */
+	protected BigDecimal lineTotalAmount;
+	/**
+	 * still to be paid
+	 */
+	protected BigDecimal duePayable;
+	/**
+	 * originally to be paid (without prepayments)
+	 */
+	protected BigDecimal grandTotal;
+	/**
+	 * the net amount upon which value added taxes are applied
+	 */
+	protected BigDecimal taxBasis;
+	/**
+	 * the total sum of value added taxes
+	 */
+	protected BigDecimal VATtotal;
+    /**
+	 * the total sum of value added taxes in accounting currency
+	 */
+	protected BigDecimal VATTotalInTaxCurrency;
+	protected TransactionCalculator tc; // the object this invoice is calculated wih
+
+	/***
+	 * calculate all sums and products, and taxes
+	 */
+	public void calculate() {
+		tc = new TransactionCalculator(this);
+		grandTotal = tc.getGrandTotal();
+		lineTotalAmount = tc.getValue();
+		duePayable = tc.getDuePayable();
+		taxBasis = tc.getTaxBasis();
+		VATtotal = BigDecimal.ZERO;
+		for (VATAmount vam : getCalculation().getTaxDetails()) {
+			VATtotal = VATtotal.add(vam.getCalculated());
+		}
+		if (taxCurrency != null) {
+			VATTotalInTaxCurrency = BigDecimal.ZERO;
+			for (VATAmount vam : getCalculation().getTaxDetails()) {
+				VATTotalInTaxCurrency = VATTotalInTaxCurrency.add(vam.getCalculated());
+			}
+		}
+	}
+
+	/***
+	 * the total sum of everything, including taxes
+	 * @return a money amount
+	 */
 	public BigDecimal getGrandTotal() {
-		if (grandTotal==null) {
+		if (grandTotal == null) {
 			calculate();
 		}
 		return grandTotal;
 	}
+
+
+	/***
+	 * usually one would use calculate, use only if the invoice is parsed
+	 * @param grand the gross total
+	 * @return fluent setter
+	 */
 	public CalculatedInvoice setGrandTotal(BigDecimal grand) {
-		grandTotal=grand;
+		grandTotal = grand;
 		return this;
 	}
+
+	/***
+	 * the net amount of all taxable goods
+	 * @return money amount
+	 */
 	public BigDecimal getTaxBasis() {
-		if (taxBasis==null) {
+		if (taxBasis == null) {
 			calculate();
 		}
 		return taxBasis;
 	}
+
+
+	/***
+	 * usually one would use calculate, use only if the invoice is parsed
+	 * @param basis taxable net total
+	 * @return fluent setter
+	 */
 	public CalculatedInvoice setTaxBasis(BigDecimal basis) {
-		taxBasis=basis;
+		taxBasis = basis;
 		return this;
 	}
 
+	/***
+	 * the amount still to be paid
+	 * @return the money amount
+	 */
 	public BigDecimal getDuePayable() {
-		if (duePayable==null) {
+		if (duePayable == null) {
 			calculate();
 		}
 		return duePayable;
 	}
+
+
+	/***
+	 * usually one would use calculate, use only if the invoice is parsed
+	 * @param due the gross total minus prepaid
+	 * @return fluent setter
+	 */
 	public CalculatedInvoice setDuePayable(BigDecimal due) {
-		duePayable=due;
+		duePayable = due;
 		return this;
 	}
 
+	/***
+	 * the total net amount
+	 * @return the money amount
+	 */
 	public BigDecimal getLineTotalAmount() {
-		if (lineTotalAmount==null) {
+		if (lineTotalAmount == null) {
 			calculate();
 		}
 		return lineTotalAmount;
 	}
-	public CalculatedInvoice setLineTotalAmount(BigDecimal total) {
-		lineTotalAmount=total;
+
+	/***
+	 * usually one would use calculate, use only if the invoice is parsed
+	 * BT-110
+	 * @param parsedValue the gross total minus net
+	 * @return fluent setter
+	 */
+	public CalculatedInvoice setVATtotal(BigDecimal parsedValue) {
+		VATtotal = parsedValue;
 		return this;
+	}
+
+	/***
+	 *
+	 * @return expect a value close to getGrandTotal-LineTotalAmount
+	 */
+	public BigDecimal getVATtotal() {
+		if (VATtotal == null) {
+			calculate();
+		}
+		return VATtotal;
+	}
+
+
+	public CalculatedInvoice setVATTotalInTaxCurrency(BigDecimal parsedValue) {
+		VATTotalInTaxCurrency = parsedValue;
+		return this;
+	}
+
+	/**
+	 * @return BT-111 VAT total amount in VAT accounting currency, nullable
+	 */
+	public BigDecimal getVATTotalInTaxCurrency() {
+		return VATTotalInTaxCurrency;
+	}
+
+
+
+	/***
+	 * usually one would use calculate, use only if the invoice is parsed
+	 * @param total the net total
+	 * @return fluent setter
+	 */
+	public CalculatedInvoice setLineTotalAmount(BigDecimal total) {
+		lineTotalAmount = total;
+		return this;
+	}
+
+	/**
+	 * this can be used to additionally e.g. access the VAT amounts
+	 * @return a updated transactioncalulator
+	 */
+	public TransactionCalculator getCalculation() {
+		return tc;
 	}
 
 }

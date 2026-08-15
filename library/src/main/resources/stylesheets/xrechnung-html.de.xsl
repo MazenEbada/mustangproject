@@ -11,8 +11,9 @@
     <xsl:variable name="i18n.history" select="'Bearbeitungshistorie'"/>
     <xsl:variable name="i18n.disclaimer" select="'Wir übernehmen keine Haftung für die Richtigkeit der Daten.'"/>
     <xsl:variable name="i18n.recipientInfo" select="'Informationen zum Käufer'"/>
+    <xsl:variable name="i18n.dateOf" select="' vom '"/>
     <xsl:variable name="i18n.bt50" select="'Straße / Haus-Nr.'"/>
-    <xsl:variable name="i18n.bt51" select="'Postfach'"/>
+    <xsl:variable name="i18n.bt51" select="'Adresszusatz'"/>
     <xsl:variable name="i18n.bt163" select="'Adresszusatz'"/>
     <xsl:variable name="i18n.bt53" select="'PLZ'"/>
     <xsl:variable name="i18n.bt52" select="'Ort'"/>
@@ -25,7 +26,7 @@
     <xsl:variable name="i18n.bt58" select="'E-Mail-Adresse'"/>
     <xsl:variable name="i18n.bt27" select="'Firmenname'"/>
     <xsl:variable name="i18n.bt35" select="'Straße / Haus-Nr.'"/>
-    <xsl:variable name="i18n.bt36" select="'Postfach'"/>
+    <xsl:variable name="i18n.bt36" select="'Adresszusatz'"/>
     <xsl:variable name="i18n.bt162" select="'Adresszusatz'"/>
     <xsl:variable name="i18n.bt38" select="'PLZ'"/>
     <xsl:variable name="i18n.bt37" select="'Ort'"/>
@@ -165,7 +166,7 @@
     <xsl:variable name="i18n.bg11" select="'Steuervertreter des Verkäufers'"/>
     <xsl:variable name="i18n.bt62" select="'Name'"/>
     <xsl:variable name="i18n.bt64" select="'Straße / Hausnummer'"/>
-    <xsl:variable name="i18n.bt65" select="'Postfach'"/>
+    <xsl:variable name="i18n.bt65" select="'Adresszusatz'"/>
     <xsl:variable name="i18n.bt164" select="'Adresszusatz'"/>
     <xsl:variable name="i18n.bt67" select="'PLZ'"/>
     <xsl:variable name="i18n.bt66" select="'Ort'"/>
@@ -188,7 +189,7 @@
     <xsl:variable name="i18n.bt72" select="'Lieferdatum'"/>
     <xsl:variable name="i18n.bt70" select="'Name des Empfängers'"/>
     <xsl:variable name="i18n.bt75" select="'Straße / Haus-Nr.'"/>
-    <xsl:variable name="i18n.bt76" select="'Postfach'"/>
+    <xsl:variable name="i18n.bt76" select="'Adresszusatz'"/>
     <xsl:variable name="i18n.bt165" select="'Adresszusatz'"/>
     <xsl:variable name="i18n.bt78" select="'PLZ'"/>
     <xsl:variable name="i18n.bt77" select="'Ort'"/>
@@ -197,6 +198,7 @@
     <xsl:variable name="i18n.bt17" select="'Vergabenummer'"/>
     <xsl:variable name="i18n.bt15" select="'Kennung der Empfangsbestätigung'"/>
     <xsl:variable name="i18n.bt16" select="'Kennung der Versandanzeige'"/>
+    <xsl:variable name="i18n.btx202" select="'Kennung des Lieferscheins'"/>
     <xsl:variable name="i18n.bt23" select="'Prozesskennung'"/>
     <xsl:variable name="i18n.bt24" select="'Spezifikationskennung'"/>
     <xsl:variable name="i18n.bt18" select="'Objektkennung'"/>

@@ -6,6 +6,8 @@
  * and limitations under the License.
  */
 package org.mustangproject.ZUGFeRD;
+import java.io.IOException;
+import java.io.InputStream;
 /**
  * Mustangproject's ZUGFeRD implementation ZUGFeRD importer Licensed under the APLv2
  *
@@ -13,16 +15,25 @@ package org.mustangproject.ZUGFeRD;
  * @version 1.1.0
  * @author jstaerk
  */
-import java.io.*;
+import java.text.ParseException;
 import java.text.SimpleDateFormat;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
 
 import javax.xml.xpath.XPath;
 import javax.xml.xpath.XPathConstants;
 import javax.xml.xpath.XPathExpression;
 import javax.xml.xpath.XPathFactory;
 
-import org.mustangproject.*;
+import org.mustangproject.FileAttachment;
+import org.mustangproject.Item;
+import org.mustangproject.Product;
+import org.mustangproject.ReferencedDocument;
+import org.mustangproject.SchemedID;
+import org.mustangproject.XMLTools;
+import org.mustangproject.util.NodeMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.w3c.dom.Node;
@@ -49,8 +60,9 @@ public class ZUGFeRDImporter extends ZUGFeRDInvoiceImporter {
 	 * for XML embedded files please use ZUGFeRDInvoiceImporter.getFileAttachmentsXML
 	 * @return a ArrayList of FileAttachments, empty if none
 	 */
+	@Override
 	public List<FileAttachment> getFileAttachmentsPDF() {
-		return PDFAttachments;
+		return pdfAttachments;
 	}
 
 
@@ -86,6 +98,7 @@ public class ZUGFeRDImporter extends ZUGFeRDInvoiceImporter {
 			case "urn:factur-x.eu:1p0:minimum":
 				return "MINIMUM";
 			case "urn:ferd:CrossIndustryDocument:invoice:1p0:extended":
+			case "urn:cen.eu:en16931:2017#conformant#urn:zugferd.de:2p0:extended":
 			case "urn:cen.eu:en16931:2017#conformant#urn:factur-x.eu:1p0:extended":
 				return "EXTENDED";
 			default:
@@ -199,7 +212,7 @@ public class ZUGFeRDImporter extends ZUGFeRDInvoiceImporter {
 	 */
 	public String getBuyertradePartySpecifiedTaxRegistrationID() {
 		String id = null;
-		if  ((importedInvoice.getRecipient()!=null) && (importedInvoice.getRecipient().getLegalOrganisation()!=null)) {
+		if (importedInvoice.getRecipient() != null && importedInvoice.getRecipient().getLegalOrganisation() != null) {
 			// this *should* be the official result
 			id = importedInvoice.getRecipient().getLegalOrganisation().getSchemedID().getID();
 		}
@@ -270,11 +283,7 @@ public class ZUGFeRDImporter extends ZUGFeRDInvoiceImporter {
 	 */
 	public String getTaxPointDate() {
 		try {
-			if (getVersion() == 1) {
-				return extractString("//*[local-name() = 'ActualDeliverySupplyChainEvent']//*[local-name() = 'OccurrenceDateTime']//*[local-name() = 'DateTimeString']");
-			} else {
-				return extractString("//*[local-name() = 'ActualDeliverySupplyChainEvent']//*[local-name() = 'OccurrenceDateTime']//*[local-name() = 'DateTimeString']");
-			}
+			return extractString("//*[local-name() = 'ActualDeliverySupplyChainEvent']//*[local-name() = 'OccurrenceDateTime']//*[local-name() = 'DateTimeString']");
 		} catch (final Exception e) {
 			// Exception was already logged
 			return "";
@@ -310,16 +319,7 @@ public class ZUGFeRDImporter extends ZUGFeRDInvoiceImporter {
 	 * @return the referred document
 	 */
 	public String getReference() {
-		try {
-			if (getVersion() == 1) {
-				return extractString("//*[local-name() = 'ApplicableSupplyChainTradeAgreement']/*[local-name() = 'BuyerReference']");
-			} else {
-				return extractString("//*[local-name() = 'ApplicableHeaderTradeAgreement']/*[local-name() = 'BuyerReference']");
-			}
-		} catch (final Exception e) {
-			// Exception was already logged
-			return "";
-		}
+		return importedInvoice.getReferenceNumber();
 	}
 
 
@@ -343,22 +343,31 @@ public class ZUGFeRDImporter extends ZUGFeRDInvoiceImporter {
 	 * @return the sender's account IBAN code
 	 */
 	public String getIBAN() {
-		if ((importedInvoice==null)||(importedInvoice.getTradeSettlement()==null)) {
-			return null;
-		}
-		for (IZUGFeRDTradeSettlement settlement : importedInvoice.getTradeSettlement()) {
-			if (settlement instanceof IZUGFeRDTradeSettlementDebit) {
-				return ((IZUGFeRDTradeSettlementDebit) settlement).getIBAN();
+		if (importedInvoice != null && importedInvoice.getTradeSettlement() != null) {
+			for (IZUGFeRDTradeSettlement settlement : importedInvoice.getTradeSettlement()) {
+				if (settlement instanceof IZUGFeRDTradeSettlementDebit) {
+					return ((IZUGFeRDTradeSettlementDebit) settlement).getIBAN();
+				}
+				if (settlement instanceof IZUGFeRDTradeSettlementPayment) {
+					return ((IZUGFeRDTradeSettlementPayment) settlement).getOwnIBAN();
+				}
 			}
-			if (settlement instanceof IZUGFeRDTradeSettlementPayment) {
-				return ((IZUGFeRDTradeSettlementPayment) settlement).getOwnIBAN();
-			}
 		}
-		return null;
+		return extractString("//*[local-name() = 'PayeePartyCreditorFinancialAccount']/*[local-name() = 'IBANID']");
 	}
 
 
 	public String getHolder() {
+		if (importedInvoice != null && importedInvoice.getTradeSettlement() != null) {
+			for (IZUGFeRDTradeSettlement settlement : importedInvoice.getTradeSettlement()) {
+				if (settlement instanceof IZUGFeRDTradeSettlementPayment) {
+					String s = ((IZUGFeRDTradeSettlementPayment) settlement).getAccountName();
+					if ( s != null ) {
+						return s;
+					}
+				}
+			}
+		}
 		return extractString("//*[local-name() = 'SellerTradeParty']/*[local-name() = 'Name']");
 	}
 
@@ -460,20 +469,13 @@ public class ZUGFeRDImporter extends ZUGFeRDInvoiceImporter {
 	 * @throws IOException if raw can not be set
 	 */
 	public void setMeta(String meta) throws IOException {
-		setRawXML(meta.getBytes());
-	}
-
-
-	/**
-	 * @return raw XML of the invoice
-	 */
-	public String getMeta() {
-		if (rawXML == null) {
-			return null;
+		try {
+			setRawXML(meta.getBytes());
+		} catch (ParseException e) {
+			LOGGER.error("Failed to parse", e);
 		}
-
-		return new String(rawXML);
 	}
+
 
 
 	public int getVersion() throws Exception {
@@ -485,12 +487,12 @@ public class ZUGFeRDImporter extends ZUGFeRDInvoiceImporter {
 		}
 
 		final String head = getUTF8();
-		if (head.contains("<rsm:CrossIndustryDocument") //
-			|| head.contains("<CrossIndustryDocument") //
-			|| head.contains("<SCRDMCCBDACIDAMessageStructure") //
-			|| head.contains("<rsm:SCRDMCCBDACIOMessageStructure")) { //
+		if (head.contains("CrossIndustryDocument") //
+			|| head.contains("CrossIndustryDocument") //
+			|| head.contains("SCRDMCCBDACIDAMessageStructure") //
+			|| head.contains("SCRDMCCBDACIOMessageStructure")) { //
 			version = 1;
-		} else if (head.contains("<rsm:CrossIndustryInvoice")) {
+		} else if (head.contains("CrossIndustryInvoice")) {
 			version = 2;
 		} else {
 			throw new Exception("ZUGFeRD version could not be determined");
@@ -509,20 +511,6 @@ public class ZUGFeRDImporter extends ZUGFeRDInvoiceImporter {
 	}
 
 
-	/**
-	 * will return true if the metadata (just extract-ed or set with setMeta) contains ZUGFeRD XML
-	 *
-	 * @return true if the invoice contains ZUGFeRD XML
-	 */
-	public boolean canParse() {
-
-		// SpecifiedExchangedDocumentContext is in the schema, so a relatively good
-		// indication if zugferd is present - better than just invoice
-		final String meta = getMeta();
-		return (meta != null) && (meta.length() > 0) && ((meta.contains("SpecifiedExchangedDocumentContext")
-			/* ZF1 */ || meta.contains("ExchangedDocumentContext") /* ZF2 */));
-	}
-
 
 	/**
 	 * returns an instance of PostalTradeAddress for SellerTradeParty section
@@ -535,7 +523,7 @@ public class ZUGFeRDImporter extends ZUGFeRDInvoiceImporter {
 
 		try {
 			if (getVersion() == 1) {
-				nl = getNodeListByPath("//*[localname() = 'CrossIndustryDocument']//*[local-name() = 'SpecifiedSupplyChainTradeTransaction']/*[local-name() = 'ApplicableSupplyChainTradeAgreement']//*[local-name() = 'BuyerTradeParty']//*[local-name() = 'PostalTradeAddress']");
+				nl = getNodeListByPath("//*[local-name() = 'CrossIndustryDocument']//*[local-name() = 'SpecifiedSupplyChainTradeTransaction']/*[local-name() = 'ApplicableSupplyChainTradeAgreement']//*[local-name() = 'BuyerTradeParty']//*[local-name() = 'PostalTradeAddress']");
 			} else {
 				nl = getNodeListByPath("//*[local-name() = 'CrossIndustryInvoice']//*[local-name() = 'SupplyChainTradeTransaction']//*[local-name() = 'ApplicableHeaderTradeAgreement']//*[local-name() = 'BuyerTradeParty']//*[local-name() = 'PostalTradeAddress']");
 			}
@@ -601,7 +589,7 @@ public class ZUGFeRDImporter extends ZUGFeRDInvoiceImporter {
 				for (int j = 0; j < nodes.getLength(); j++) {
 					n = nodes.item(j);
 					final short nodeType = n.getNodeType();
-					if ((nodeType == Node.ELEMENT_NODE) && (n.getLocalName() != null)) {
+					if (nodeType == Node.ELEMENT_NODE && n.getLocalName() != null) {
 						switch (n.getLocalName()) {
 							case "PostcodeCode":
 								address.setPostCodeCode("");
@@ -645,6 +633,8 @@ public class ZUGFeRDImporter extends ZUGFeRDInvoiceImporter {
 									address.setCountrySubDivisionName(n.getFirstChild().getNodeValue());
 								}
 								break;
+							default:
+								break;
 						}
 					}
 				}
@@ -655,7 +645,7 @@ public class ZUGFeRDImporter extends ZUGFeRDInvoiceImporter {
 
 	/**
 	 * returns a list of LineItems
-	 * @deprecated use invoiceimporter getZFItems
+	 * @deprecated use invoice::getZFItems
 	 *
 	 * @return a List of LineItem instances
 	 */
@@ -729,7 +719,11 @@ public class ZUGFeRDImporter extends ZUGFeRDInvoiceImporter {
 						case "SpecifiedLineTradeDelivery":
 						case "SpecifiedSupplyChainTradeDelivery":
 							node = getNodeByName(nn.getChildNodes(), "BilledQuantity");
-							lineItem.setQuantity(XMLTools.tryBigDecimal(node));
+							if (node != null) {
+								lineItem.setQuantity(XMLTools.tryBigDecimal(node));
+								new NodeMap(node.getChildNodes()).getNode("DespatchAdviceReferencedDocument").map(ReferencedDocument::fromNode).ifPresent(rd -> lineItem.setDespatchAdviceReferencedDocument(rd));
+								new NodeMap(node.getChildNodes()).getNode("DeliveryNoteReferencedDocument").map(ReferencedDocument::fromNode).ifPresent(rd -> lineItem.setDeliveryNoteReferencedDocument(rd));
+							}
 							break;
 
 						case "SpecifiedLineTradeSettlement":
@@ -748,7 +742,7 @@ public class ZUGFeRDImporter extends ZUGFeRDInvoiceImporter {
 							node = getNodeByName(nn.getChildNodes(), "ApplicableTradeTax");
 							if (node != null) {
 								node = getNodeByName(node.getChildNodes(), "CategoryCode");
-								if(node != null){
+								if (node != null) {
 									lineItem.getProduct().setTaxCategoryCode(XMLTools.getNodeValue(node));
 								}
 							}
@@ -795,6 +789,8 @@ public class ZUGFeRDImporter extends ZUGFeRDInvoiceImporter {
 								lineItem.setLineTotalAmount(XMLTools.tryBigDecimal(node));
 							}
 							break;
+						default:
+							break;
 					}
 				}
 			}
@@ -814,14 +810,14 @@ public class ZUGFeRDImporter extends ZUGFeRDInvoiceImporter {
 		try {
 			nl = getNodeListByPath("//*[local-name() = 'IncludedSupplyChainTradeLineItem']");
 
+			for (int i = 0; i < nl.getLength(); i++) {
+				final Node n = nl.item(i);
+				lineItemNodes.add(n);
+			}
 		} catch (final Exception e) {
 			// Exception was already logged
 		}
 
-		for (int i = 0; i < nl.getLength(); i++) {
-			final Node n = nl.item(i);
-			lineItemNodes.add(n);
-		}
 		return lineItemNodes;
 	}
 
@@ -834,7 +830,7 @@ public class ZUGFeRDImporter extends ZUGFeRDInvoiceImporter {
 	 */
 	private Node getNodeByName(NodeList nl, String name) {
 		for (int i = 0; i < nl.getLength(); i++) {
-			if ((nl.item(i).getLocalName() != null) && (nl.item(i).getLocalName().equals(name))) {
+			if (nl.item(i).getLocalName() != null && nl.item(i).getLocalName().equals(name)) {
 				return nl.item(i);
 			} else if (nl.item(i).getChildNodes().getLength() > 0) {
 				final Node node = getNodeByName(nl.item(i).getChildNodes(), name);

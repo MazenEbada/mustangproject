@@ -32,13 +32,14 @@ import java.util.GregorianCalendar;
 
 import org.junit.FixMethodOrder;
 import org.junit.runners.MethodSorters;
+import org.mustangproject.ReferencedDocument;
 
 import junit.framework.Test;
 import junit.framework.TestSuite;
 
 @FixMethodOrder(MethodSorters.NAME_ASCENDING)
 public class ZF2EdgeTest extends MustangReaderTestCase {
-	final String TARGET_PDF = "./target/testout-ZF2newEdge.pdf";
+	private static final String TARGET_PDF = "./target/testout-ZF2newEdge.pdf";
 
 	protected class EdgeProduct implements IZUGFeRDExportableProduct {
 		private String description, name, unit;
@@ -100,6 +101,16 @@ public class ZF2EdgeTest extends MustangReaderTestCase {
 			return "DE99XX12345";
 		}
 
+		@Override
+		public String getPaymentMeansCode() {
+			return "54";
+		}
+
+		@Override
+		public String getPaymentMeansInformation() {
+			return "Credit Card";
+		}
+
 	}
 
 	@Override
@@ -132,6 +143,19 @@ public class ZF2EdgeTest extends MustangReaderTestCase {
 	@Override
 	public String getOwnCountry() {
 		return "DE";
+	}
+
+	@SuppressWarnings("deprecation")
+	@Override
+	public IReferencedDocument getTenderReferencedDocument() {
+		return new ReferencedDocument("983-jk-787", "50", null, new Date(2025 - 1900, 10 - 1, 12));
+	}
+
+
+	@SuppressWarnings("deprecation")
+	@Override
+	public IReferencedDocument getObjectIdentifierReferencedDocument() {
+		return new ReferencedDocument("gPogKLtac0", "130", null, new Date(2026 - 1900, 1 - 1, 26));
 	}
 
 	@Override
@@ -215,7 +239,7 @@ public class ZF2EdgeTest extends MustangReaderTestCase {
 	}
 
 	@Override
-	public IZUGFeRDPaymentTerms[] getPaymentTerms() {
+	public IZUGFeRDPaymentTerms getPaymentTerms() {
 		PaymentDiscountTerms paymentDiscountTerms =
 				new PaymentDiscountTerms(
 						new BigDecimal(2), // skonto prozent
@@ -230,13 +254,11 @@ public class ZF2EdgeTest extends MustangReaderTestCase {
 			e.printStackTrace();
 
 		}
-		return new IZUGFeRDPaymentTerms[]{
-			new PaymentTerms(
+		return new PaymentTerms(
 				"14 Tage 2% Skonto, 30 Tage rein netto",
 				due,// fälligkeitsdatum
 				paymentDiscountTerms //PaymentDiscountTerms
-			)
-		};
+			);
 	}
 
 	@Override
@@ -250,7 +272,7 @@ public class ZF2EdgeTest extends MustangReaderTestCase {
 	}
 
 	@Override
-	public IZUGFeRDAllowanceCharge[] getZFLogisticsServiceCharges() {
+	public IZUGFeRDLogisticsServiceCharge[] getZFLogisticsServiceCharges() {
 		return null;
 	}
 
@@ -260,8 +282,13 @@ public class ZF2EdgeTest extends MustangReaderTestCase {
 	}
 
 	@Override
-	public String getDespatchAdviceReferencedDocumentID() {
-		return "123";
+	public IReferencedDocument getDespatchAdviceReferencedDocument() {
+		return new ReferencedDocument("123");
+	}
+
+	@Override
+	public IReferencedDocument getDeliveryNoteReferencedDocument() {
+		return new ReferencedDocument("0815");
 	}
 
 	/**
@@ -293,11 +320,9 @@ public class ZF2EdgeTest extends MustangReaderTestCase {
 
 		// the writing part
 
-		try  {
-			InputStream SOURCE_PDF = this.getClass()
-				.getResourceAsStream("/MustangGnuaccountingBeispielRE-20170509_505blanko.pdf");
+		try (ZUGFeRDExporterFromA1 ze = new ZUGFeRDExporterFromA1()) {
+			InputStream SOURCE_PDF = this.getClass().getResourceAsStream("/MustangGnuaccountingBeispielRE-20170509_505blanko.pdf");
 
-			ZUGFeRDExporterFromA1 ze = new ZUGFeRDExporterFromA1();
 			ze.ignorePDFAErrors();
 			ze.load(SOURCE_PDF);
 			ze.setProducer("My Application")
@@ -314,7 +339,8 @@ public class ZF2EdgeTest extends MustangReaderTestCase {
 		// now check the contents (like MustangReaderTest)
 		ZUGFeRDImporter zi = new ZUGFeRDImporter(TARGET_PDF);
 		String resultXML=zi.getUTF8();
-		assertTrue(resultXML.contains("<ram:TypeCode>59</ram:TypeCode>"));
+		assertTrue(resultXML.contains("<ram:TypeCode>54</ram:TypeCode>"));
+		assertTrue(resultXML.contains("<ram:Information>Credit Card</ram:Information>"));
 		assertTrue(resultXML.contains("<ram:ShipToTradeParty>"));
 		assertTrue(resultXML.contains("<ram:IBANID>DE540815</ram:IBANID>"));
 		assertTrue(resultXML.contains("<ram:ApplicableTradePaymentDiscountTerms"));
@@ -348,12 +374,9 @@ public class ZF2EdgeTest extends MustangReaderTestCase {
 		// the writing part
 
 		ByteArrayOutputStream bos = new ByteArrayOutputStream();
-		try (InputStream SOURCE_PDF = this.getClass()
-				.getResourceAsStream("/MustangGnuaccountingBeispielRE-20170509_505PDFA3.pdf");
-
-			 IZUGFeRDExporter ze = new ZUGFeRDExporterFromA3().setProducer("My Application")
-					 .setCreator(System.getProperty("user.name")).setZUGFeRDVersion(2).disableFacturX()
-					 .load(SOURCE_PDF)) {
+		try (InputStream SOURCE_PDF = this.getClass().getResourceAsStream("/MustangGnuaccountingBeispielRE-20170509_505PDFA3.pdf");
+				IZUGFeRDExporter ze = new ZUGFeRDExporterFromA3()) {
+			ze.setCreator(System.getProperty("user.name")).setZUGFeRDVersion(2).disableFacturX().load(SOURCE_PDF);
 			ze.setTransaction(this);
 			String theXML = new String(ze.getProvider().getXML(), StandardCharsets.UTF_8);
 			assertTrue(theXML.contains("<rsm:CrossIndustryInvoice"));

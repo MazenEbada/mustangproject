@@ -14,6 +14,7 @@ import org.mustangproject.Invoice;
 import org.mustangproject.Item;
 import org.mustangproject.LegalOrganisation;
 import org.mustangproject.Product;
+import org.mustangproject.ReferencedDocument;
 import org.mustangproject.SchemedID;
 import org.mustangproject.TradeParty;
 import org.mustangproject.ZUGFeRD.IZUGFeRDPaymentDiscountTerms;
@@ -246,7 +247,7 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
         // Konvertiere LocalDate zu Date, falls vorhanden
         if (metadata.getOrderDate() != null) {
             Date orderDate = Date.from(metadata.getOrderDate().atStartOfDay(ZoneId.systemDefault()).toInstant());
-            mustangInvoice.setBuyerOrderReferencedDocumentIssueDateTime(new SimpleDateFormat("yyyy-MM-dd").format(orderDate));
+            mustangInvoice.setBuyerOrderReferencedDocumentIssueDateTime(orderDate);
         }
         
         mustangInvoice.setDocumentCode(mapArtToDocumentCode(metadata.getInvoiceTypePa()));
@@ -572,7 +573,7 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
             });
         }
 
-        mustangInvoice.setPaymentTerms(mustangPaymentTerms);
+        mustangInvoice.setExtendedPaymentTerms(mustangPaymentTerms);
     }
 
     /**
@@ -807,7 +808,9 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
                 item.setBasisQuantity(basisQty);
                 item.setTax(tax);
             }
-            item.addReferencedLineID(internItem.getReferences().getOrderPosition());
+            // BT-132: frueher item.addReferencedLineID(..), seit upstream 2.24.1 ueber ReferencedDocument.
+            item.setBuyerOrderReferencedDocument(
+                new ReferencedDocument().setLineID(internItem.getReferences().getOrderPosition()));
             
             // Position zur Liste hinzufügen
             items.add(item);

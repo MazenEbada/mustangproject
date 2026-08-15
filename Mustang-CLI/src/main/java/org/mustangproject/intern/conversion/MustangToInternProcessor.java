@@ -128,11 +128,10 @@ public class MustangToInternProcessor implements InboundInvoiceProcessor {
         }
         
         // Bestelldatum konvertieren, falls vorhanden
-        String orderDateStr = mustangInvoice.getBuyerOrderReferencedDocumentIssueDateTime();
-        if (orderDateStr != null && !orderDateStr.isEmpty()) {
+        Date buyerOrderDate = mustangInvoice.getBuyerOrderReferencedDocumentIssueDateTime();
+        if (buyerOrderDate != null) {
             try {
-                LocalDate orderDate = LocalDate.parse(orderDateStr.substring(0, 10));
-                metadata.setOrderDate(orderDate);
+                metadata.setOrderDate(convertToLocalDate(buyerOrderDate));
             } catch (Exception e) {
                 // Fehler bei der Datumskonvertierung ignorieren
             }
@@ -281,7 +280,7 @@ public class MustangToInternProcessor implements InboundInvoiceProcessor {
      */
     private void convertPaymentTerms() {
         InternPaymentTerms paymentTerms = internInvoice.getPaymentTerms();
-        IZUGFeRDPaymentTerms[] mustangPaymentTerms = mustangInvoice.getPaymentTerms();
+        IZUGFeRDPaymentTerms[] mustangPaymentTerms = mustangInvoice.getExtendedPaymentTerms();
         
         if (mustangPaymentTerms != null && mustangPaymentTerms.length > 0) {
             // Hauptzahlungsbedingung

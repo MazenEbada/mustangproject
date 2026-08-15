@@ -231,7 +231,7 @@ public class DeprecatedAPplusIncomingXMLProcessor {
 	    invoice.setNumber(invoiceNumber);
 	    invoice.setCurrency(currency);
 	    invoice.setBuyerOrderReferencedDocumentID(orderNo);
-	    invoice.setBuyerOrderReferencedDocumentIssueDateTime(orderDate);
+	    invoice.setBuyerOrderReferencedDocumentIssueDateTime(parseDate(orderDate));
 	    invoice.setDocumentCode(mapArtToDocumentCode(art));
 	    invoice.setDocumentName(parechnungsart);
 	    if (urrechnung != null) invoice.setInvoiceReferencedDocumentID(urrechnung);
@@ -508,7 +508,7 @@ public class DeprecatedAPplusIncomingXMLProcessor {
 		        });
 	        }
 	        
-	        invoice.setPaymentTerms(paymentTerms);
+	        invoice.setExtendedPaymentTerms(paymentTerms);
 	    }
 	}
 

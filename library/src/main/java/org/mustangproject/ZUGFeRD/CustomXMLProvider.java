@@ -23,20 +23,27 @@ import java.nio.charset.StandardCharsets;
 public class CustomXMLProvider implements IXMLProvider {
 
 	protected byte[] zugferdData;
-	protected Profile profile=Profiles.getByName("EN16931");
+	/***
+	 * the scope=profile this XML data is provided in
+	 */
+	protected Profile profile = Profiles.getByName("EN16931");
 
 	@Override
 	public byte[] getXML() {
 		return zugferdData;
 	}
 
+	/***
+	 * the custom XML to be provided
+	 * @param newData the XML in UTF-8
+	 */
 	public void setXML(byte[] newData) {
 		String zf = new String(newData, StandardCharsets.UTF_8);
 		/**
 		 * rsm:CrossIndustry is ZF/FX/XR (CII 2016b),rsm:SCRDMCCBDACIOMessageStructure is Order-X (CIO 2021) and
 		 *  SCRDMCCBDACIDAMessageStructure is Despatch Advice
 		 */
-		if ((!zf.contains("rsm:CrossIndustry")) && (!zf.contains("rsm:SCRDMCCBDACIOMessageStructure")) && (!zf.contains("SCRDMCCBDACIDAMessageStructure"))) {
+		if (!zf.contains("rsm:CrossIndustry") && !zf.contains("rsm:SCRDMCCBDACIOMessageStructure") && !zf.contains("SCRDMCCBDACIDAMessageStructure")) {
 			throw new RuntimeException("ZUGFeRD XML does not contain <rsm:CrossIndustry, <rsm:SCRDMCCBDACIOMessageStructure or SCRDMCCBDACIDAMessageStructure and can thus not be valid");
 		}
 
@@ -50,17 +57,11 @@ public class CustomXMLProvider implements IXMLProvider {
 	}
 
 	@Override
-	public void setTest() {
-		// TODO Auto-generated method stub
-
-	}
-
-	@Override
 	public Profile getProfile() {
 		return profile;
 	}
 
 	public void setProfile(Profile level) {
-		profile=level;
+		profile = level;
 	}
 }

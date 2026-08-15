@@ -19,12 +19,12 @@
 package org.mustangproject.ZUGFeRD;
 /**
  * Mustangproject's ZUGFeRD implementation
- * Neccessary interface for ZUGFeRD exporter
+ * Necessary interface for ZUGFeRD exporter
  * Licensed under the APLv2
  * @date 2014-05-10
  * @version 1.2.0
  * @author jstaerk
- * */
+ **/
 
 import java.math.BigDecimal;
 import java.util.Date;
@@ -32,11 +32,13 @@ import java.util.List;
 
 import org.mustangproject.IncludedNote;
 import org.mustangproject.Item;
+import org.mustangproject.ReferencedDocument;
+import org.mustangproject.TradeParty;
 
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 
 @JsonDeserialize(as = Item.class)
-public interface IZUGFeRDExportableItem extends IAbsoluteValueProvider{
+public interface IZUGFeRDExportableItem extends IAbsoluteValueProvider {
 	IZUGFeRDExportableProduct getProduct();
 
 	/**
@@ -44,6 +46,9 @@ public interface IZUGFeRDExportableItem extends IAbsoluteValueProvider{
 	 * @return array of the discounts on a single item
 	 */
 	default IZUGFeRDAllowanceCharge[] getItemAllowances() {
+		if (getProduct() != null) {
+			return getProduct().getAllowances();
+		}
 		return null;
 	}
 
@@ -52,14 +57,42 @@ public interface IZUGFeRDExportableItem extends IAbsoluteValueProvider{
 	 * @return array of the additional charges on the item
 	 */
 	default IZUGFeRDAllowanceCharge[] getItemCharges() {
+		if (getProduct() != null) {
+			return getProduct().getCharges();
+		}
 		return null;
 	}
 
+	/***
+	 * buyer order reference document
+	 * @return  the document (defaults to {@code null})
+	 */
+	default ReferencedDocument getBuyerOrderReferencedDocument() {
+		return null;
+	}
+
+	/***
+	 * seller order reference document
+	 * @return  the document id (defaults to {@code null})
+	 */
+	default ReferencedDocument getSellerOrderReferencedDocument() {
+		return null;
+	}
+
+	/***
+	 * contract reference document
+	 * @return  the document id (defaults to {@code null})
+	 */
+	default ReferencedDocument getContractReferencedDocument() {
+		return null;
+	}
 
 	/***
 	 * BT 132 (issue https://github.com/ZUGFeRD/mustangproject/issues/247)
+	 * @deprecated use getBuyerOrderReferencedDocument.getLineID
 	 * @return the line ID of the order (BT-132)
 	 */
+	@Deprecated(forRemoval = true, since = "2.24.1")
 	default String getBuyerOrderReferencedDocumentLineID() {
 		return null;
 	}
@@ -72,33 +105,33 @@ public interface IZUGFeRDExportableItem extends IAbsoluteValueProvider{
 	 */
 	BigDecimal getPrice();
 
+	/**
+	 * @deprecated use getPrice
+	 */
 	@Override
+	@Deprecated
 	default BigDecimal getValue() {
 		return getPrice();
 	}
+
 	/**
 	 * how many get billed
 	 *
 	 * @return the quantity of the item
 	 */
+	@Override
 	BigDecimal getQuantity();
 
 	/**
 	 * how many items units per price
-	 * 
+	 *
 	 * @return item units per price
 	 */
 	default BigDecimal getBasisQuantity() {
 		return BigDecimal.ONE.setScale(4);
 	}
 
-	/***
-	 * the ID of an additionally referenced document for this item
-	 * @deprecated use {@link #getAdditionalReferences()} instead.
-	 * @return the id as string
-	 */
-	@Deprecated
-	default String getAdditionalReferencedDocumentID() {
+	default BigDecimal getLineTotalAmount() {
 		return null;
 	}
 
@@ -127,7 +160,6 @@ public interface IZUGFeRDExportableItem extends IAbsoluteValueProvider{
 	}
 
 
-
 	/***
 	 * specifies the item level delivery period (there is also one on document level),
 	 * this will be included in a BillingSpecifiedPeriod element
@@ -145,22 +177,43 @@ public interface IZUGFeRDExportableItem extends IAbsoluteValueProvider{
 	default Date getDetailedDeliveryPeriodTo() {
 		return null;
 	}
-	
-	/***
-	 * specify allowances amount for the line item total
-	 *
-	 * @return the sum of allowances for this item
-	 */
-	default IZUGFeRDAllowanceCharge[] getItemTotalAllowances() {
-		return null;
-	}
 
 	/***
 	 *
 	 * @return the line ID
 	 */
-	default String getId()  {
+	default String getId() {
 		return null;
+	}
+
+	/***
+	 * for sub invoice lines in ZUGFeRD Extended: the line ID of the parent line
+	 * @return the parent line ID or null if this is a top-level line
+	 */
+	default String getParentLineID() {
+		return null;
+	}
+
+	/***
+	 * for sub invoice lines in ZUGFeRD Extended: the status reason code
+	 * determines if a line is relevant for calculation
+	 * @return DETAIL, GROUP, INFORMATION or null for standard lines
+	 */
+	default String getLineStatusReasonCode() {
+		return null;
+	}
+
+	/***
+	 * checks if this line should be included in sum calculation.
+	 * GROUP and INFORMATION lines are not calculation-relevant,
+	 * only DETAIL lines (or lines without status code) are.
+	 * @return true if the line should be included in calculation
+	 */
+	@com.fasterxml.jackson.annotation.JsonIgnore
+	default boolean isCalculationRelevant() {
+		String status = getLineStatusReasonCode();
+		// null means standard line (backwards compatible), DETAIL is explicitly relevant
+		return status == null || "DETAIL".equals(status);
 	}
 
 	/**
@@ -170,6 +223,79 @@ public interface IZUGFeRDExportableItem extends IAbsoluteValueProvider{
 	 * @return list of the notes
 	 */
 	default List<IncludedNote> getNotesWithSubjectCode() {
+		return null;
+	}
+
+	/***
+	 * BT-133 invoice line buyer accounting reference.
+	 * @return the buyer accounting reference for this invoice line
+	 */
+	default String getAccountingReference() {
+		return null;
+	}
+
+	default LineCalculator getCalculation() {
+		return new LineCalculator(this);
+	}
+
+    /***
+	 * For line seller
+	 * @return the seller
+	 */
+	default TradeParty getLineSeller() {
+		return null;
+	}
+
+	/**
+	 * get delivery note document ID (per Item - ZUGFeRD EXTENDED)
+	 * rsm:SupplyChainTradeTransaction/ram:IncludedSupplyChainTradeLineItem/ram:SpecifiedLineTradeDelivery/ram:DeliveryNoteReferencedDocument/IssuerAssignedID
+	 * @deprecated use getDeliveryNoteReferencedDocument.getIssuerAssignedID
+	 * @return the ID of the delivery note document
+	 */
+	@Deprecated(forRemoval = true, since = "2.24.1")
+	default String getDeliveryNoteReferencedDocumentID() {
+		return null;
+	}
+
+	/**
+	 * get delivery note document date (per Item - ZUGFeRD EXTENDED)
+	 * rsm:SupplyChainTradeTransaction/ram:IncludedSupplyChainTradeLineItem/ram:SpecifiedLineTradeDelivery/ram:DeliveryNoteReferencedDocument/FormattedIssueDateTime
+	 * @deprecated use getDeliveryNoteReferencedDocument.getFormattedIssueDateTime
+	 * @return the date of the delivery note document
+	 */
+	@Deprecated(forRemoval = true, since = "2.24.1")
+	default Date getDeliveryNoteReferencedDocumentDate() {
+		return null;
+	}
+
+	/**
+	 * get delivery note document LineID (per Item - ZUGFeRD EXTENDED)
+	 * rsm:SupplyChainTradeTransaction/ram:IncludedSupplyChainTradeLineItem/ram:SpecifiedLineTradeDelivery/ram:DeliveryNoteReferencedDocument/LineID
+	 * @deprecated use getDeliveryNoteReferencedDocument.getLineID
+	 * @return the LineID of the delivery note document item
+	 */
+	@Deprecated(forRemoval = true, since = "2.24.1")
+	default String getDeliveryNoteReferencedDocumentLineID() {
+		return null;
+	}
+
+	/**
+	 * get despatch advice document (per Item - ZUGFeRD EXTENDED)
+	 * rsm:SupplyChainTradeTransaction/ram:IncludedSupplyChainTradeLineItem/ram:SpecifiedLineTradeDelivery/ram:DespatchAdviceReferencedDocument
+	 *
+	 * @return the ID of the despatch advice document
+	 */
+	default ReferencedDocument getDespatchAdviceReferencedDocument() {
+		return null;
+	}
+
+	/**
+	 * get delivery note document (per Item - ZUGFeRD EXTENDED)
+	 * rsm:SupplyChainTradeTransaction/ram:IncludedSupplyChainTradeLineItem/ram:SpecifiedLineTradeDelivery/ram:DeliveryNoteReferencedDocument/
+	 *
+	 * @return the ID of the delivery note document
+	 */
+	default ReferencedDocument getDeliveryNoteReferencedDocument() {
 		return null;
 	}
 }

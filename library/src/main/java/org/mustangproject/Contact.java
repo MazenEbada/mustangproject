@@ -6,6 +6,9 @@ import org.mustangproject.ZUGFeRD.IZUGFeRDExportableContact;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 
+import java.util.Arrays;
+import java.util.List;
+
 /***
  * a named contact person in an organisation
  * for the organisation/company itsel please
@@ -46,7 +49,7 @@ public class Contact implements IZUGFeRDExportableContact {
 	/**
 	 * the fax number of the contact person
 	 */
-	protected String fax = null;
+	protected String fax;
 
 	/***
 	 * default constructor.
@@ -111,33 +114,52 @@ public class Contact implements IZUGFeRDExportableContact {
 			for (int nodeIndex = 0; nodeIndex < nodes.getLength(); nodeIndex++) {
 				//nodes.item(i).getTextContent())) {
 				Node currentItemNode = nodes.item(nodeIndex);
-				if (currentItemNode.getLocalName() != null) {
+				String localName = currentItemNode.getLocalName();
+				if (localName != null) {
 
-					if (currentItemNode.getLocalName().equals("PersonName")/*CII*/||currentItemNode.getLocalName().equals("Name")/*UBL*/) {
-						setName(currentItemNode.getFirstChild().getNodeValue());
-					}
-					if (currentItemNode.getLocalName().equals("TelephoneUniversalCommunication")) { /*CII*/
+					List<String> nameElements = Arrays.asList("PersonName"/*CII*/, "Name"/*UBL*/);
+					if (localName != null && nameElements.contains(localName)
+						&& currentItemNode.getFirstChild() != null) {
+							setName(currentItemNode.getFirstChild().getNodeValue());
+						}
+
+					if (localName.equals("TelephoneUniversalCommunication")) { /*CII*/
 						NodeList tel = currentItemNode.getChildNodes();
 						for (int telChildIndex = 0; telChildIndex < tel.getLength(); telChildIndex++) {
-							if (tel.item(telChildIndex).getLocalName() != null) {
-								if (tel.item(telChildIndex).getLocalName().equals("CompleteNumber")) {
+							String telLocalName = tel.item(telChildIndex).getLocalName();
+							if (telLocalName != null && telLocalName.equals("CompleteNumber")) {
 									setPhone(tel.item(telChildIndex).getTextContent());
 								}
-							}
+
 						}
-					} else if (currentItemNode.getLocalName().equals("Telephone")) { /* UBL */
+					} else if (localName.equals("Telephone")) { /* UBL */
 						setPhone(currentItemNode.getTextContent());
 					}
-					if (currentItemNode.getLocalName().equals("EmailURIUniversalCommunication")) { /* CII */
+
+					// CII: only for Extended profile
+					if (localName.equals("FaxUniversalCommunication")) { /* CII */
+						NodeList fax = currentItemNode.getChildNodes();
+						for (int faxChildIndex = 0; faxChildIndex < fax.getLength(); faxChildIndex++) {
+							String faxLocalName = fax.item(faxChildIndex).getLocalName();
+							if (faxLocalName != null && faxLocalName.equals("CompleteNumber")) {
+									setFax(fax.item(faxChildIndex).getTextContent());
+								}
+
+						}
+					} else if (localName.equals("Telefax")) { /* UBL */
+						setFax(currentItemNode.getTextContent());
+					}
+
+					if (localName.equals("EmailURIUniversalCommunication")) { /* CII */
 						NodeList email = currentItemNode.getChildNodes();
 						for (int emailChildIndex = 0; emailChildIndex < email.getLength(); emailChildIndex++) {
-							if (email.item(emailChildIndex).getLocalName() != null) {
-								if (email.item(emailChildIndex).getLocalName().equals("URIID")) {
+							String emailLocalName = email.item(emailChildIndex).getLocalName();
+							if (emailLocalName != null && emailLocalName.equals("URIID")) {
 									setEMail(email.item(emailChildIndex).getTextContent());
 								}
-							}
+
 						}
-					} else if (currentItemNode.getLocalName().equals("ElectronicMail")) { /* UBL */
+					} else if (localName.equals("ElectronicMail")) { /* UBL */
 						setEMail(currentItemNode.getTextContent());
 					}
 				}

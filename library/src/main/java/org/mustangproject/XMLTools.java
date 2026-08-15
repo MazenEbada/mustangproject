@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.net.URL;
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.Date;
@@ -12,6 +13,19 @@ import org.apache.commons.io.IOUtils;
 import org.dom4j.io.XMLWriter;
 import org.mustangproject.ZUGFeRD.ZUGFeRDDateFormat;
 import org.w3c.dom.Node;
+import org.xml.sax.SAXException;
+import org.xml.sax.SAXNotRecognizedException;
+import org.xml.sax.SAXNotSupportedException;
+
+import javax.xml.XMLConstants;
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.transform.TransformerConfigurationException;
+import javax.xml.transform.TransformerFactory;
+import javax.xml.validation.Schema;
+import javax.xml.validation.SchemaFactory;
+import javax.xml.validation.Validator;
 
 public class XMLTools extends XMLWriter {
 	@Override
@@ -22,6 +36,84 @@ public class XMLTools extends XMLWriter {
 	@Override
 	public String escapeElementEntities(String s) {
 		return super.escapeElementEntities(s);
+	}
+
+	public static DocumentBuilder getDocumentBuilder(boolean namespaceAware) throws ParserConfigurationException {
+		final DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
+		//REDHAT
+		//https://www.blackhat.com/docs/us-15/materials/us-15-Wang-FileCry-The-New-Age-Of-XXE-java-wp.pdf
+		try {
+			dbf.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
+		} catch (ParserConfigurationException e) {
+			// ignore
+		}
+		try {
+			dbf.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
+		} catch (IllegalArgumentException e) {
+			// ignore
+		}
+		try {
+			dbf.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
+		} catch (IllegalArgumentException e) {
+			// ignore
+		}
+
+		//OWASP
+		//https://cheatsheetseries.owasp.org/cheatsheets/XML_External_Entity_Prevention_Cheat_Sheet.html
+		try {
+			dbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+		} catch (ParserConfigurationException e) {
+			// ignore
+		}
+		try {
+			dbf.setFeature("http://xml.org/sax/features/external-general-entities", false);
+		} catch (ParserConfigurationException e) {
+			// ignore
+		}
+		try {
+			dbf.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+		} catch (ParserConfigurationException e) {
+			// ignore
+		}
+		try {
+		// Disable external DTDs as well
+			dbf.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
+		} catch (ParserConfigurationException e) {
+			// ignore
+		}
+		// and these as well, per Timothy Morgan's 2014 paper: "XML Schema, DTD, and Entity Attacks"
+		dbf.setXIncludeAware(false);
+		dbf.setExpandEntityReferences(false);
+		dbf.setNamespaceAware(namespaceAware);
+		return dbf.newDocumentBuilder();
+	}
+
+	public static Validator getValidator(URL schemaFile) throws SAXException {
+		SchemaFactory schemaFactory = SchemaFactory.newInstance(XMLConstants.W3C_XML_SCHEMA_NS_URI);
+		try {
+			schemaFactory.setProperty(XMLConstants.ACCESS_EXTERNAL_DTD, "");
+		} catch (SAXNotSupportedException | SAXNotRecognizedException e) {
+			// ignore
+		}
+		Schema schema = schemaFactory.newSchema(schemaFile);
+
+		Validator validator = schema.newValidator();
+		try {
+			validator.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
+		} catch (SAXNotSupportedException | SAXNotRecognizedException e) {
+			// ignore
+		}
+		return validator;
+	}
+
+	public static TransformerFactory getTransformerFactory() {
+		TransformerFactory factory = new net.sf.saxon.TransformerFactoryImpl();
+		try {
+			factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
+		} catch (TransformerConfigurationException e) {
+			// ignore
+		}
+		return factory;
 	}
 
 	public static String nDigitFormat(BigDecimal value, int scale) {
@@ -99,11 +191,11 @@ public class XMLTools extends XMLWriter {
 	 * @return value as String with decimals in the specified range
 	 */
 	public static String nDigitFormatDecimalRange(BigDecimal value, int maxDecimals, int minDecimals) {
-		if ((maxDecimals<minDecimals)||(maxDecimals<0)||(minDecimals<0)) {
+		if (maxDecimals < minDecimals || maxDecimals < 0 || minDecimals < 0) {
 			throw new IllegalArgumentException("Invalid scale range provided");
 		}
-		int curDecimals=maxDecimals;
-		while  ( (curDecimals>minDecimals) && (value.setScale(curDecimals, RoundingMode.HALF_UP).compareTo(value.setScale(curDecimals-1, RoundingMode.HALF_UP))==0)) {
+		int curDecimals = maxDecimals;
+		while (curDecimals > minDecimals && value.setScale(curDecimals, RoundingMode.HALF_UP).compareTo(value.setScale(curDecimals - 1, RoundingMode.HALF_UP)) == 0) {
 			 curDecimals--;
 		}
 		return value.setScale(curDecimals, RoundingMode.HALF_UP).toPlainString();
@@ -130,7 +222,16 @@ public class XMLTools extends XMLWriter {
 	 * @return a util.Date, or null, if not parseable
 	 */
 	public static Date tryDate(String toParse) {
-		final SimpleDateFormat formatter = ZUGFeRDDateFormat.DATE.getFormatter();
+		SimpleDateFormat formatter = null;
+		if (toParse == null) {
+			return null;
+		}
+		if (toParse.contains("-")) {
+			// from ubl
+			 formatter = new SimpleDateFormat("yyyy-MM-dd");
+		} else {
+			formatter = ZUGFeRDDateFormat.DATE.getFormatter();
+		}
 		try {
 			return formatter.parse(toParse);
 		} catch (final Exception e) {
@@ -154,10 +255,9 @@ public class XMLTools extends XMLWriter {
 			if (c >= 0xd800 && c <= 0xdbff && i + 1 < len) {
 				c = ((c - 0xd7c0) << 10) | (s.charAt(++i) & 0x3ff);    // UTF16 decode
 			}
-			if (c < 0x80) {      // ASCII range: test most common case first
-				if (c < 0x20 && (c != '\t' && c != '\r' && c != '\n')) {
-					// Illegal XML character, even encoded. Skip or substitute
-					sb.append("&#xfffd;");   // Unicode replacement character
+			if (c < 0x80) { // ASCII range: test most common case first
+				if (c < 0x20 && c != '\t' && c != '\r' && c != '\n') { // Illegal XML character, even encoded. Skip or substitute
+					sb.append("&#xfffd;"); // Unicode replacement character
 				} else {
 					switch (c) {
 						case '&':
@@ -181,7 +281,7 @@ public class XMLTools extends XMLWriter {
 							sb.append((char) c);
 					}
 				}
-			} else if ((c >= 0xd800 && c <= 0xdfff) || c == 0xfffe || c == 0xffff) {
+			} else if (c >= 0xd800 && c <= 0xdfff || c == 0xfffe || c == 0xffff) {
 				// Illegal XML character, even encoded. Skip or substitute
 				sb.append("&#xfffd;");   // Unicode replacement character
 			} else {
@@ -200,8 +300,8 @@ public class XMLTools extends XMLWriter {
 	 */
 	public static byte[] removeBOM(byte[] zugferdRaw) {
 		final byte[] zugferdData;
-		// This handles the UTF-8 BOM 
-		if ((zugferdRaw[0] == (byte) 0xEF) && (zugferdRaw[1] == (byte) 0xBB) && (zugferdRaw[2] == (byte) 0xBF)) {
+		// This handles the UTF-8 BOM
+		if (zugferdRaw[0] == (byte) 0xEF && zugferdRaw[1] == (byte) 0xBB && zugferdRaw[2] == (byte) 0xBF) {
 			// I don't like BOMs, lets remove it
 			zugferdData = new byte[zugferdRaw.length - 3];
 			System.arraycopy(zugferdRaw, 3, zugferdData, 0, zugferdRaw.length - 3);
@@ -210,9 +310,9 @@ public class XMLTools extends XMLWriter {
 		}
 		return zugferdData;
 	}
-	
+
 	public static byte[] removeUtf8Bom(byte[] bytes) {
-        byte[] bom = {(byte)0xEF, (byte)0xBB, (byte)0xBF};
+        byte[] bom = {(byte) 0xEF, (byte) 0xBB, (byte) 0xBF};
         if (bytes.length > 3 && Arrays.equals(Arrays.copyOf(bytes, 3), bom)) {
             return Arrays.copyOfRange(bytes, 3, bytes.length); // Entfernt das BOM
         }
@@ -220,7 +320,8 @@ public class XMLTools extends XMLWriter {
     }
 
 	public static byte[] getBytesFromStream(InputStream fileinput) throws IOException {
-	  return IOUtils.toByteArray (fileinput);
+		// Stream closing responsibility is with the caller
+		return IOUtils.toByteArray(fileinput);
 	}
 
 

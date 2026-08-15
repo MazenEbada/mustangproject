@@ -23,11 +23,18 @@ import junit.framework.TestCase;
 import junit.framework.TestSuite;
 import org.junit.FixMethodOrder;
 import org.junit.runners.MethodSorters;
+import org.mustangproject.Invoice;
+
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+
+import javax.xml.xpath.XPathExpressionException;
 
 @FixMethodOrder(MethodSorters.NAME_ASCENDING)
 public class MustangReaderWriterCustomXMLTest extends TestCase {
@@ -55,14 +62,13 @@ public class MustangReaderWriterCustomXMLTest extends TestCase {
 		final String TARGET_PDF = "./target/testout-MustangGnuaccountingBeispielRE-20171118_506custom.pdf";
 		// the writing part
 
-		try {
+		try (IZUGFeRDExporter zea1 = new ZUGFeRDExporterFromA1()) {
 			InputStream SOURCE_PDF = this.getClass().getResourceAsStream("/MustangGnuaccountingBeispielRE-20170509_505blanko.pdf");
 
-			IZUGFeRDExporter zea1 = new ZUGFeRDExporterFromA1().setProducer("My Application").setCreator("Test").setProfile(Profiles.getByName("EN16931"))
-					.load(SOURCE_PDF);
+			zea1.setProducer("My Application").setCreator("Test").setProfile(Profiles.getByName("EN16931")).load(SOURCE_PDF);
 
 			final byte[] UTF8ByteOrderMark = new byte[]{(byte) 0xef, (byte) 0xbb, (byte) 0xbf};
-			/* we have much more information than just in the basic profile (comfort or extended) but it's perfectly valid to provide more information, just not less. 
+			/* we have much more information than just in the basic profile (comfort or extended) but it's perfectly valid to provide more information, just not less.
 			 * test the export with bom (which is valid) because this will also test the import (which also needs to work and needs to be tested)
 			 * */
 			String ownZUGFeRDXML = new String(UTF8ByteOrderMark, StandardCharsets.UTF_8) + "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
@@ -100,6 +106,13 @@ public class MustangReaderWriterCustomXMLTest extends TestCase {
 					"</ram:SpecifiedLineTradeAgreement>\n" +
 					"<ram:SpecifiedLineTradeDelivery>\n" +
 					"<ram:BilledQuantity unitCode=\"HUR\">1.0000</ram:BilledQuantity>\n" +
+					"<ram:DeliveryNoteReferencedDocument>\n" +
+					"<ram:IssuerAssignedID>deliverynote123</ram:IssuerAssignedID>\n" +
+				    "<ram:LineID>deliverypos456</ram:LineID>\n" +
+					"<ram:FormattedIssueDateTime>\n" +
+					"<udt:DateTimeString format=\"102\">20260114</udt:DateTimeString>\n" +
+					"</ram:FormattedIssueDateTime>\n" +
+					"</ram:DeliveryNoteReferencedDocument>\n" +
 					"</ram:SpecifiedLineTradeDelivery>\n" +
 					"<ram:SpecifiedLineTradeSettlement>\n" +
 					"<ram:ApplicableTradeTax>\n" +
@@ -263,8 +276,8 @@ public class MustangReaderWriterCustomXMLTest extends TestCase {
 			zea1.export(baos);
 			zea1.close();
 			String pdfContent = baos.toString(StandardCharsets.UTF_8);
-			assertFalse(pdfContent.indexOf("(via mustangproject.org") == -1);
-			assertFalse(pdfContent.indexOf("<fx:ConformanceLevel>EN 16931</fx:ConformanceLevel>") == -1);
+			assertNotEquals(-1, pdfContent.indexOf("(via mustangproject.org"));
+			assertNotEquals(-1, pdfContent.indexOf("<fx:ConformanceLevel>EN 16931</fx:ConformanceLevel>"));
 
 		} catch (IOException e) {
 			e.printStackTrace();
@@ -279,6 +292,14 @@ public class MustangReaderWriterCustomXMLTest extends TestCase {
 		assertEquals(zi.getIBAN(), "DE88 2008 0000 0970 3757 00");
 		assertEquals(zi.getHolder(), "Bei Spiel GmbH");
 		assertEquals(zi.getForeignReference(), "RE-20171118/506");
+		try {
+			Invoice invoice = zi.extractInvoice();
+			assertEquals("deliverynote123", invoice.getZFItems()[0].getDeliveryNoteReferencedDocument().getIssuerAssignedID());
+			assertEquals("deliverypos456", invoice.getZFItems()[0].getDeliveryNoteReferencedDocument().getLineID());
+			assertEquals(new SimpleDateFormat("dd.MM.yyyy").parse("14.01.2026"), invoice.getZFItems()[0].getDeliveryNoteReferencedDocument().getFormattedIssueDateTime());
+		} catch (ParseException | XPathExpressionException e) {
+			e.printStackTrace();
+		}
 	}
 
 	/**
@@ -294,11 +315,10 @@ public class MustangReaderWriterCustomXMLTest extends TestCase {
 		final String TARGET_PDF = "./target/testout-MustangGnuaccountingBeispielRE-20170509_505custom.pdf";
 		// the writing part
 
-		try {
+		try (IZUGFeRDExporter zea1 = new ZUGFeRDExporterFromA1()) {
 			InputStream SOURCE_PDF = this.getClass().getResourceAsStream("/MustangGnuaccountingBeispielRE-20170509_505blanko.pdf");
 
-			IZUGFeRDExporter zea1 = new ZUGFeRDExporterFromA1()
-					.setProducer("My Application")
+			zea1.setProducer("My Application")
 					.setCreator("Test")
 					.setZUGFeRDVersion(1)
 					.setProfile(Profiles.getByName("BASIC",1))

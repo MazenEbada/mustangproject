@@ -1,5 +1,6 @@
 package org.mustangproject;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import org.mustangproject.ZUGFeRD.IZUGFeRDCashDiscount;
@@ -20,7 +21,12 @@ public class CashDiscount implements IZUGFeRDCashDiscount {
 	/***
 	 * the period (usually days) count how long the percent apply
 	 */
-	protected Integer days=null;
+	protected Integer days;
+
+	/**
+	 * The original payment amount
+	 */
+	protected BigDecimal basisAmount;
 
 	/***
 	 * Create a cash discount (skonto) with the specified height in the specified period.
@@ -36,12 +42,16 @@ public class CashDiscount implements IZUGFeRDCashDiscount {
 	}
 
 	/***
-	 * bean contructor
+	 * bean constructor
 	 */
 	public CashDiscount() {
 
 	}
 
+	/***
+	 * how much this discount removed from the original dept
+	 * @return the percent
+	 */
 	public BigDecimal getPercent() {
 		return percent;
 	}
@@ -51,26 +61,58 @@ public class CashDiscount implements IZUGFeRDCashDiscount {
 		return this;
 	}
 
+	/***
+	 * get the number of calendar days this cash discount is valid
+	 * @return the number (integer) of days
+	 */
 	public Integer getDays() {
 		return days;
 	}
 
+	/***
+	 * the number this cash discount holds valid
+	 * @param days the number of days
+	 * @return fluent setter
+	 */
 	public CashDiscount setDays(Integer days) {
 		this.days = days;
 		return this;
 	}
 
 	/***
+	 * get the amount upon which the cash discount is applied
+	 * @return money amount
+	 */
+	public BigDecimal getBasisAmount() {
+		return basisAmount;
+	}
+
+	/***
+	 * set the amount on which the cash discount is applied
+	 * @param basisAmount the money amount
+	 * @return fluent setter
+	 */
+	public CashDiscount setBasisAmount(BigDecimal basisAmount) {
+		this.basisAmount = basisAmount;
+		return this;
+	}
+
+	/***
 	 * @return this particular cash discount as cross industry invoice XML
 	 */
+	@JsonIgnore
 	public String getAsCII() {
-		return  "<ram:SpecifiedTradePaymentTerms>"+
-				"<ram:Description>Cash Discount</ram:Description>"+
-				" <ram:ApplicableTradePaymentDiscountTerms>"+
-          		"  <ram:BasisPeriodMeasure unitCode=\"DAY\">"+days+"</ram:BasisPeriodMeasure>"+
-          		"  <ram:CalculationPercent>"+XMLTools.nDigitFormat(percent,3)+"</ram:CalculationPercent>"+
-        		" </ram:ApplicableTradePaymentDiscountTerms>"+
-      			"</ram:SpecifiedTradePaymentTerms>";
+		String s = "<ram:SpecifiedTradePaymentTerms>"
+				+ "<ram:Description>Cash Discount</ram:Description>"
+				+ "<ram:ApplicableTradePaymentDiscountTerms>"
+				+ "<ram:BasisPeriodMeasure unitCode=\"DAY\">" + days + "</ram:BasisPeriodMeasure>";
+		if (basisAmount != null) {
+			s += "<ram:BasisAmount>" + XMLTools.nDigitFormat(basisAmount, 2) + "</ram:BasisAmount>";
+		}
+		s += "<ram:CalculationPercent>" + XMLTools.nDigitFormat(percent, 3) + "</ram:CalculationPercent>"
+				+ "</ram:ApplicableTradePaymentDiscountTerms>"
+				+ "</ram:SpecifiedTradePaymentTerms>";
+		return s;
 	}
 
 	/***
@@ -78,11 +120,8 @@ public class CashDiscount implements IZUGFeRDCashDiscount {
 	 * XRechnung CIUS defined it's own proprietary format for a freetext field
 	 * @return this particular cash discount in proprietary xrechnung format
 	 */
+	@JsonIgnore
 	public String getAsXRechnung() {
-		return "#SKONTO#TAGE="+days+"#PROZENT="+XMLTools.nDigitFormat(percent,2)+"#\n";
+		return "#SKONTO#TAGE=" + days + "#PROZENT=" + XMLTools.nDigitFormat(percent, 2) + "#\n";
 	}
-
-
-
-
 }

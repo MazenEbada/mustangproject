@@ -25,15 +25,15 @@ import java.io.InputStream;
 import jakarta.activation.DataSource;
 import org.mustangproject.FileAttachment;
 
-public interface IZUGFeRDExporter extends Closeable, IExporter  {
+public interface IZUGFeRDExporter extends Closeable, IExporter {
 	/**
-	 * factory: loads a PDF file and returns an appropriate exporter 
+	 * factory: loads a PDF file and returns an appropriate exporter
 	 *
 	 * @param pdfFilename binary of a PDF/A1 compliant document
 	 * @return the generated exporter
 	 * @throws IOException if anything is wrong with filename
 	 */
-	public IZUGFeRDExporter load(String pdfFilename) throws IOException;
+	IZUGFeRDExporter load(String pdfFilename) throws IOException;
 
 	/**
 	 * Makes A PDF/A3a-compliant document from a PDF-A1 compliant document (on the
@@ -43,7 +43,7 @@ public interface IZUGFeRDExporter extends Closeable, IExporter  {
 	 * @return the generated exporter
 	 * @throws IOException (should not happen at all)
 	 */
-	public IZUGFeRDExporter load(byte[] pdfBinary) throws IOException;
+	IZUGFeRDExporter load(byte[] pdfBinary) throws IOException;
 
 	/**
 	 * Makes A PDF/A3a-compliant document from a PDF-A1 compliant document (on the
@@ -53,20 +53,40 @@ public interface IZUGFeRDExporter extends Closeable, IExporter  {
 	 * @throws IOException if anything is wrong with inputstream
 	 * @return the generated ZUGFeRDExporter
 	 */
-	public IZUGFeRDExporter load(InputStream pdfSource) throws IOException;
-	public IZUGFeRDExporter setCreator(String creator);
-	public IZUGFeRDExporter setConformanceLevel(PDFAConformanceLevel newLevel);
-	public IZUGFeRDExporter setProducer(String producer);
-	public IZUGFeRDExporter setZUGFeRDVersion(int version);
-	public boolean ensurePDFIsValid(final DataSource dataSource) throws IOException;
-	public IZUGFeRDExporter setXML(byte[] zugferdData) throws IOException;
-	public IZUGFeRDExporter disableFacturX();
-	public IZUGFeRDExporter setProfile(Profile zugferdConformanceLevel);
-	public String getNamespaceForVersion(int ver);
-	public String getPrefixForVersion(int ver) ;
-	public IZUGFeRDExporter disableAutoClose(boolean disableAutoClose);
-	public void attachFile(FileAttachment file);
-	public void attachFile(String filename, byte[] data, String mimetype, String relation);
-	public IXMLProvider getProvider();
+	IZUGFeRDExporter load(InputStream pdfSource) throws IOException;
+	IZUGFeRDExporter setCreator(String creator); // sets the name of the author
+	IZUGFeRDExporter setConformanceLevel(PDFAConformanceLevel newLevel);
+	IZUGFeRDExporter setEnablePDFAttachmentCompression(boolean enablePDFAttachmentCompression);
+	IZUGFeRDExporter setProducer(String producer); // set the PDF "producer"
+	IZUGFeRDExporter setZUGFeRDVersion(int version);
+	boolean ensurePDFIsValid(DataSource dataSource) throws IOException;
+	IZUGFeRDExporter setXML(byte[] zugferdData) throws IOException;
+	IZUGFeRDExporter disableFacturX();
+	IZUGFeRDExporter setProfile(Profile zugferdConformanceLevel);
+	String getNamespaceForVersion(int ver);
+	String getPrefixForVersion(int ver) ;
+	IZUGFeRDExporter disableAutoClose(boolean disableAutoClose);
+
+	/***
+	 * attach an additional PDF file attachment for Factur-X attachments
+	 * (for attached files embedded into XML, within Germany domestically preferred,
+	 * please refer to @see Invoice.embedFileInXML)
+	 * @param file mime type and data
+	 */
+	void attachFile(FileAttachment file);
+
+	/***
+	 * attach an additional PDF file attachment for Factur-X attachments
+	 * (for attached files embedded into XML, within Germany domestically preferred,
+	 * please refer to @see Invoice.embedFileInXML
+	 *
+	 * @param filename the filename to be suggested
+	 * @param data the binary data
+	 * @param mimetype the mime type, from the list of allowed mime types
+	 * @param relation the PDF relation
+	 */
+	void attachFile(String filename, byte[] data, String mimetype, String relation);
+
+	IXMLProvider getProvider();
 
 }

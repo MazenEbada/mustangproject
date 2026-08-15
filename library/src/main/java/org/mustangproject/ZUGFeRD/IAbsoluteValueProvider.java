@@ -22,6 +22,9 @@ import java.math.BigDecimal;
 
 public interface IAbsoluteValueProvider {
 
-	public BigDecimal getValue();
+	BigDecimal getValue();
 
+	default BigDecimal getQuantity() {
+		return BigDecimal.ONE;
+	}
 }

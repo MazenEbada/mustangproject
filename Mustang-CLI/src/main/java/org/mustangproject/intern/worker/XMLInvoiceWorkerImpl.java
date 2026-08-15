@@ -298,10 +298,9 @@ public class XMLInvoiceWorkerImpl implements XMLInvoiceWorker {
     	Element rechnungElement = getElement(doc, "rechnung");
     	InternAddress address = invoice.getManualDeliveryAddress();
     	
-    	if (getElementValue(rechnungElement, "LADRMANUELL") == null
-    		|| getElementValue(rechnungElement, "LADRMANUELL") == "0"
-    		|| getElementValue(rechnungElement, "LADRMANUELL") == "") {
-    		invoice.setManualDeliveryAddress(null); 
+    	final String ladrManuell = getElementValue(rechnungElement, "LADRMANUELL");
+    	if (ladrManuell == null || "0".equals(ladrManuell) || ladrManuell.isEmpty()) {
+    		invoice.setManualDeliveryAddress(null);
     	}
     	
     	boolean lieferadresseExists = lAdresseElement != null && 

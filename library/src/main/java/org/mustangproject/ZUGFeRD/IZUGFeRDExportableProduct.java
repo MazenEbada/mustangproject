@@ -117,14 +117,14 @@ public interface IZUGFeRDExportableProduct {
 
 	default String getTaxCategoryCode() {
 		if (isIntraCommunitySupply()) {
-		    return TaxCategoryCodeTypeConstants.INTRACOMMUNITY;// "K"; // within europe
+		    return TaxCategoryCodeTypeConstants.INTRACOMMUNITY; // "K"; // within europe
 		} else if (isReverseCharge()) {
-		    return TaxCategoryCodeTypeConstants.REVERSECHARGE;// "AE"; // to out of europe...
-		} else if (getVATPercent().compareTo(BigDecimal.ZERO) == 0) {
+		    return TaxCategoryCodeTypeConstants.REVERSECHARGE; // "AE"; // to out of europe...
+		} else if (getVATPercent() == null || getVATPercent().compareTo(BigDecimal.ZERO) == 0) {
 		    return TaxCategoryCodeTypeConstants.ZEROTAXPRODUCTS; // "Z"; // zero rated goods
 		} else {
-		    return TaxCategoryCodeTypeConstants.STANDARDRATE;// "S"; // one of the "standard" rates (not
-								     // neccessarily a default rate, even a deducted VAT
+		    return TaxCategoryCodeTypeConstants.STANDARDRATE; // "S"; // one of the "standard" rates (not
+								     // Necessarily a default rate, even a deducted VAT
 								     // is standard calculation)
 		}
 	}
@@ -158,6 +158,10 @@ public interface IZUGFeRDExportableProduct {
 		return null;
 	}
 
+	default String getTaxExemptionReasonCode() {
+		return null;
+	}
+
 	default String getCountryOfOrigin() {
 	    return null;
 	}
@@ -166,10 +170,35 @@ public interface IZUGFeRDExportableProduct {
 	    return null;
 	}
 
+
+	/**
+	 * product level discounts (AppliedTradeAllowanceCharge, will change net price)
+	 * @return array of the discounts on a single product
+	 */
+	default IZUGFeRDAllowanceCharge[] getAllowances() {
+		return null;
+	}
+
+	/**
+	 * product level charges (AppliedTradeAllowanceCharge, will change net price)
+	 * @return array of the additional charges on the product
+	 */
+	default IZUGFeRDAllowanceCharge[] getCharges() {
+		return null;
+	}
+
+
+
 	/**
 	 * Detailed information about the product
 	 *
 	 * @return an array containing the product classifications or {@code null} if not set
 	 */
-	default IDesignatedProductClassification[] getClassifications() { return null; }
+	default IDesignatedProductClassification[] getClassifications() {
+		return null;
+	}
+
+	default ITradeProductInstanceType[] getIndividualTradeProductInstances() {
+		return null;
+	}
 }

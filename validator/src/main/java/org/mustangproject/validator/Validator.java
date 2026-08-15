@@ -7,24 +7,28 @@ import java.net.URL;
 import javax.xml.XMLConstants;
 import javax.xml.transform.Source;
 import javax.xml.transform.stream.StreamSource;
-import javax.xml.validation.Schema;
-import javax.xml.validation.SchemaFactory;
 
+import org.mustangproject.XMLTools;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.xml.sax.SAXException;
 
 //abstract class
+
+/****
+ * an entity that can return validation results, e.g. a PDF/A validator or a certain XML validator
+ */
 public abstract class Validator {
 	private static final Logger LOGGER = LoggerFactory.getLogger(Validator.class.getCanonicalName()); // log output
-	
-	protected ValidationContext context;
-	protected boolean autoload=true;
-	
-	public Validator(ValidationContext ctx){
-		this.context=ctx;
+
+	protected ValidationContext context; // the results and metadata of the validation run performed
+
+	protected boolean autoload = true; // load already when filename is set
+
+	protected Validator(ValidationContext ctx) {
+		this.context = ctx;
 	}
-	
+
 	//abstract method
 
 	/***
@@ -47,7 +51,7 @@ public abstract class Validator {
 	public String getXMLResult() {
 		return context.getXMLResult();
 	}
-	
+
 	/***
 	 * validates a schema, which can only be needed in XML validation - and in pdf validation for additional data
 	 * @param xmlRawData the XML to be validated
@@ -59,14 +63,12 @@ public abstract class Validator {
 	protected void validateSchema(byte[] xmlRawData, String schemaPath, int section, EPart part) throws IrrecoverableValidationError {
 		URL schemaFile = Thread.currentThread().getContextClassLoader().getResource("schema/" + schemaPath);
 		Source xmlData = new StreamSource(new ByteArrayInputStream(xmlRawData));
-		SchemaFactory schemaFactory = SchemaFactory.newInstance(XMLConstants.W3C_XML_SCHEMA_NS_URI);
 		try {
-			Schema schema = schemaFactory.newSchema(schemaFile);
-			javax.xml.validation.Validator validator = schema.newValidator();
+			javax.xml.validation.Validator validator = XMLTools.getValidator(schemaFile);
+			validator.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
 			validator.validate(xmlData);
 		} catch (SAXException e) {
-			context.addResultItem(new ValidationResultItem(ESeverity.error, "schema validation fails:" + e)
-					.setSection(section).setPart(part));
+			context.addResultItem(new ValidationResultItem(ESeverity.error, "schema validation fails:" + e).setSection(section).setPart(part));
 		} catch (IOException e) {
 			LOGGER.error(e.getMessage(), e);
 		}
@@ -81,7 +83,6 @@ public abstract class Validator {
 	public void setAutoload(boolean autoload) {
 		this.autoload = autoload;
 	}
-
 
 
 }
