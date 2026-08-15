@@ -397,6 +397,9 @@ public class Main {
 	                case "GENERATE_SIMPLE":
 	                	returnString = APplusActions.handleGenerateSimple(args);
 	                	break;
+	                case "VALIDATE":
+	                	returnString = APplusActions.handleValidate(args);
+	                	break;
 	                default:
 	                    System.err.println("Error: Unknown custom action '" + args[1] + "'");
 	                    System.exit(1);
