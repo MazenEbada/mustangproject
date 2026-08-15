@@ -210,6 +210,10 @@ public class XMLInvoiceExporter implements InvoiceExporter {
      * Fügt Adressdaten zum XML hinzu
      */
     private void addAddressToXml(Document doc, Element parent, InternAddress address, String prefix) {
+        // MEB: manualDeliveryAddress ist seit dem LADRMANUELL-Fix nullbar (LADRMANUELL=0/leer).
+        if (address == null) {
+            return;
+        }
         addElement(doc, parent, prefix + "GLNID", address.getGlnId());
         addElement(doc, parent, prefix + "DUNSNR", address.getDuns());
         addElement(doc, parent, prefix + "FIRMA1", address.getCompanyName1());
