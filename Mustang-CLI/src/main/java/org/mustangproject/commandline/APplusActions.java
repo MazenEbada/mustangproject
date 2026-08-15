@@ -7,19 +7,16 @@
 package org.mustangproject.commandline;
 
 import java.io.BufferedReader;
-import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileReader;
-import java.io.FileWriter;
 import java.io.InputStreamReader;
 import java.util.HashMap;
 import java.util.Map;
 
 import org.mustangproject.applus.APplusInterface;
 public class APplusActions {
-	
-    
+
+
     /**
      * Parses an argument value from the command line.
      */
@@ -31,14 +28,14 @@ public class APplusActions {
         }
         return null;
     }
-	
+
 	public static String handleGenerateFromXML(String[] args) throws Exception {
 	    String result = null;
-	    
+
 		// Parse required arguments for XML generation
 	    String inputXML = getArgValue(args, "--input-xml");
-	    
-	    Map<String,String> conversionKeys = new HashMap<String, String>();
+
+	    Map<String, String> conversionKeys = new HashMap<String, String>();
 	    for (int i = 0; i < args.length; i++) {
 	        if (args[i].startsWith("---")) { // Prüfen, ob es ein Argument-Schlüssel ist
 	            String key = args[i].substring(3).toUpperCase(); // Entfernt "---" und konvertiert in Großbuchstaben
@@ -51,7 +48,7 @@ public class APplusActions {
 	            }
 	        }
 	    }
-	    
+
 	    String tempFilePath = null;
 	    for (int i = 0; i < args.length - 1; i++) {
             if (args[i].equalsIgnoreCase("--temp-output-file")) {
@@ -64,7 +61,7 @@ public class APplusActions {
 	        System.err.println("Error: --input-xml parameter is required for 'GENERATE_FROM_XML'.");
 	        System.exit(1);
 	    }
-	    
+
 	    StringBuilder content = new StringBuilder();
 	    File inputFile = new File(inputXML);
 	    try (BufferedReader fileReader = new BufferedReader(
@@ -76,30 +73,30 @@ public class APplusActions {
 	       }
 	   }
 
-	    
+
 	    result = APplusInterface.getErechnungXML(content.toString(), conversionKeys, tempFilePath);
 
 	    return result;
-	   
+
 	}
 
 	public static String handleGenerateSimple(String[] args) throws Exception {
 		String result = null;
-	    
+
 		// Parse required arguments for XML generation
 	    String inputFileContent = getArgValue(args, "--input-file");
 	    if (inputFileContent == null) {
 	        System.err.println("Error: --input-file parameter is required for 'GENERATE_SIMPLE'.");
 	        System.exit(1);
 	    }
-	    
+
 		// Parse required arguments for XML generation
 	    String outputFormat = getArgValue(args, "--output-format");
 	    if (outputFormat == null) {
 	        System.err.println("Error: --output-format parameter is required for 'GENERATE_SIMPLE'.");
 	        System.exit(1);
 	    }
-	    
+
 	    String tempFilePath = null;
 	    for (int i = 0; i < args.length - 1; i++) {
             if (args[i].equalsIgnoreCase("--temp-output-file")) {
@@ -107,13 +104,13 @@ public class APplusActions {
                 break;
             }
         }
-	    
+
 	    File inputFile = new File(inputFileContent);
-	    
+
 	    result = APplusInterface.generateSimpleInvoice(inputFile, outputFormat, tempFilePath);
 
 	    return result;
 	}
 
 }
-    
+

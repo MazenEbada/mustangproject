@@ -373,22 +373,22 @@ public class Main {
 	 */
 	public static void main(String[] args) {
 		try {
-			
+
 
 			//MEB: Custom Actions
 			/*
 			 *
 			 * This custom part is part of Featurepack E-Rechnung VT
-			
+
 			 * Copyright by AM - Consulting GmbH 2025
 			 * License under /AppServer/XML/License-AMC.txt
 			 */
 
 			// ..................................................................
 	    	// Check if a custom action is specified
-            
+
 	        if (args.length >= 2 && args[0].equalsIgnoreCase("--custom-action")) {
-	        	
+
 	        	String returnString = null;
 	            switch (args[1].toUpperCase()) {
 	                case "GENERATE_FROM_XML":
@@ -401,7 +401,7 @@ public class Main {
 	                    System.err.println("Error: Unknown custom action '" + args[1] + "'");
 	                    System.exit(1);
 	            }
-	            
+
 	            // Check if the caller provided a temp file path
 	            String outputFilePath = null;
 	            for (int i = 0; i < args.length - 1; i++) {
@@ -426,9 +426,9 @@ public class Main {
 
 	            return;
 	        }
-	        
+
 	        //..................................................................
-	        
+
 			CommandLine cmd;
 			CommandLineParser parser = new DefaultParser();
 

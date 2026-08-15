@@ -88,6 +88,17 @@
             </plugins>
         </pluginManagement>
         <plugins>
+            <!-- MEB: Upstream fuehrt seit 2.16 Checkstyle im Build (Phase process-classes).
+                 Unser APplus-Custom-Code folgt dem Upstream-Styleguide nicht und wuerde
+                 den Jar-Build blockieren. Upstream-Quellen bleiben weiterhin geprueft. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-checkstyle-plugin</artifactId>
+                <configuration>
+                    <configLocation>checkstyle.xml</configLocation>
+                    <excludes>org/mustangproject/applus/**/*.java,org/mustangproject/intern/**/*.java</excludes>
+                </configuration>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
