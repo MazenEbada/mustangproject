@@ -248,8 +248,14 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
         mustangInvoice.setCurrency(metadata.getCurrency());
         mustangInvoice.setBuyerOrderReferencedDocumentID(metadata.getCustomerOrderNumber());
         
-        // Konvertiere LocalDate zu Date, falls vorhanden
-        if (metadata.getOrderDate() != null) {
+        // Konvertiere LocalDate zu Date, falls vorhanden.
+        // Das Bestelldatum landet als ram:FormattedIssueDateTime im
+        // BuyerOrderReferencedDocument. In XRechnung ist das Element dort NICHT
+        // zulaessig - CII-DT-027 ("FormattedIssueDateTime should not be present",
+        // EN16931-CII-validation.xslt). In ZUGFeRD EXTENDED ist es erlaubt und
+        // bleibt deshalb erhalten. BT-13 (die Bestellnummer selbst) ist davon
+        // nicht betroffen und wird weiterhin in beiden Profilen gesetzt.
+        if (metadata.getOrderDate() != null && !"X".equals(applusEinterface)) {
             Date orderDate = Date.from(metadata.getOrderDate().atStartOfDay(ZoneId.systemDefault()).toInstant());
             mustangInvoice.setBuyerOrderReferencedDocumentIssueDateTime(orderDate);
         }
