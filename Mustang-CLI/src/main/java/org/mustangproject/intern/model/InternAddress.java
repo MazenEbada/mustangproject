@@ -9,6 +9,11 @@ package org.mustangproject.intern.model;
  * Adressklasse für Lieferanten, Kunden und Lieferadressen
  */
 public class InternAddress {
+    /** BT-29 / BT-46: Kennung der Partei beim Gegenueber (Lieferanten- bzw.
+     *  Kundennummer). Bewusst ein eigenes Feld und nicht die GLN: die GLN
+     *  ist eine global vergebene Nummer mit Schema 0088, diese hier ist eine
+     *  hausinterne Nummer ohne Schema. */
+    private String partyId;
     private String glnId;
     private String duns;
 
@@ -45,6 +50,14 @@ public class InternAddress {
 		this.duns = duns;
 	}
 	
+    public String getPartyId() {
+        return partyId;
+    }
+
+    public void setPartyId(String partyId) {
+        this.partyId = partyId;
+    }
+
     public String getGlnId() {
         return glnId;
     }

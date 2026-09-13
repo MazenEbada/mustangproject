@@ -8,6 +8,7 @@ package org.mustangproject.intern.conversion;
 
 import org.mustangproject.Allowance;
 import org.mustangproject.BankDetails;
+import org.mustangproject.Charge;
 import org.mustangproject.Contact;
 import org.mustangproject.IncludedNote;
 import org.mustangproject.Invoice;
@@ -205,6 +206,9 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
         }
         mustangInvoice.setDeliveryAddress(deliveryAddress);
 
+        // Step 5b: Lieferscheinbezug (BT-16)
+        extractDespatchAdvice(mustangInvoice);
+
         // Step 6: Extract Payment Terms
         extractInvoicePaymentTerms(mustangInvoice);
 
@@ -326,6 +330,16 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
 
         TradeParty tradeParty = new TradeParty();
 
+        // BT-29 (Verkaeufer) bzw. BT-46 (Kaeufer): die Nummer, unter der die
+        // Partei beim Gegenueber gefuehrt wird - Lieferanten- bzw. Kundennummer.
+        // Sie kommt aus dem eigenen Element ANP_PARTYID und NICHT aus der GLN:
+        // die GLN ist eine global vergebene Kennung mit Schema 0088, diese hier
+        // eine hausinterne Nummer ohne Schema. Fehlt das Element, bleibt das
+        // Feld leer - fuer bestehende Mandanten aendert sich dadurch nichts.
+        if (address.getPartyId() != null && !address.getPartyId().isEmpty()) {
+            tradeParty.setID(address.getPartyId());
+        }
+
         // Setze GLN/Global ID, falls vorhanden
         if (address.getGlnId() != null && !address.getGlnId().isEmpty()) {
             SchemedID id = new SchemedID();
@@ -350,7 +364,14 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
         tradeParty.setEmail(address.getEmail());
 
         // Setze Steuerdaten
-        tradeParty.setTaxID(address.getTaxNumber());
+        // Nur beim Verkaeufer (Typ "V") darf neben der USt-IdNr. (BT-31,
+        // schemeID "VA") auch die Steuernummer (BT-32, schemeID "FC") stehen.
+        // Bei Rechnungs- und Lieferadresse ist ausschliesslich "VA" zulaessig;
+        // eine zweite ram:SpecifiedTaxRegistration reisst in ZUGFeRD EXTENDED
+        // BR-FXEXT-03, FX-SCH-A-000166 und FX-SCH-A-000703 auf.
+        if ("V".equals(type)) {
+            tradeParty.setTaxID(address.getTaxNumber());
+        }
         tradeParty.setVATID(address.getVatId());
 
         // Erstelle Kontaktinformationen, wenn mindestens eines der Felder vorhanden ist
@@ -386,10 +407,10 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
             String gf2 = address.getManagingDirector2();
             String gf = null;
             if (gf1 != null) {
-                gf = "Geshäftsführer: " + gf1;
+                gf = "Geschäftsführer: " + gf1;
                 if (gf2 != null) gf += ", " + gf2;
             }
-            if (gf != null) {
+            if (gf != null && isNoteEnabled("GF")) {
                 mustangInvoice.addNotes(Collections.singletonList(IncludedNote.regulatoryNote(gf)));
             }
         }
@@ -422,6 +443,74 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
      * 
      * @param mustangInvoice Das Mustang-Invoice-Objekt
      */
+    /**
+     * BT-16, Lieferscheinbezug. EN 16931 kennt auf Belegebene genau EINEN
+     * Lieferschein, APplus fuehrt ihn dagegen je Position. Deshalb wird der
+     * Beleg nur dann gesetzt, wenn alle Positionen auf denselben Lieferschein
+     * verweisen - bei einer Sammelrechnung ueber mehrere Lieferscheine waere
+     * jede Auswahl willkuerlich, dann bleibt das Feld leer und die Angabe
+     * steht weiterhin an den Positionen.
+     */
+    /**
+     * Eine Skontostufe in der von der XRechnung vorgeschriebenen Schreibweise.
+     * Die Regel BR-DE-18 prueft gegen
+     *   (^|
+?
+)#(SKONTO)#TAGE=([0-9]+#PROZENT=[0-9]+\.[0-9]{2})...#$
+     * Daraus folgt: Grossbuchstaben, Prozentsatz ohne Vorzeichen mit Punkt und
+     * genau zwei Nachkommastellen, kein zusaetzliches Leerzeichen - und die
+     * Zeile muss mit einem Zeilenumbruch abschliessen. BASISBETRAG entfaellt,
+     * weil sich das Skonto immer auf den faelligen Gesamtbetrag (BT-115)
+     * bezieht.
+     */
+    private static String skontoZeile(String tage, String prozent) {
+        if (tage == null || prozent == null) {
+            return "";
+        }
+        String t = tage.trim();
+        String p = prozent.trim();
+        if (t.isEmpty() || p.isEmpty()) {
+            return "";
+        }
+        try {
+            BigDecimal satz = new BigDecimal(p);
+            if (satz.compareTo(BigDecimal.ZERO) == 0) {
+                return "";
+            }
+            int tageZahl = new BigDecimal(t).intValue();
+            return "#SKONTO#TAGE=" + tageZahl
+                 + "#PROZENT=" + satz.setScale(2, BigDecimal.ROUND_HALF_UP).toPlainString() + "#\n";
+        } catch (NumberFormatException e) {
+            return "";
+        }
+    }
+
+    private void extractDespatchAdvice(Invoice mustangInvoice) {
+        List<InternInvoiceItem> items = internInvoice.getItems();
+        if (items == null || items.isEmpty()) {
+            return;
+        }
+        String lieferschein = null;
+        for (InternInvoiceItem item : items) {
+            if (item == null || item.getReferences() == null) {
+                continue;
+            }
+            String wert = item.getReferences().getDeliveryNote();
+            if (wert == null || wert.trim().isEmpty()) {
+                continue;
+            }
+            wert = wert.trim();
+            if (lieferschein == null) {
+                lieferschein = wert;
+            } else if (!lieferschein.equals(wert)) {
+                return;   // mehrere verschiedene Lieferscheine
+            }
+        }
+        if (lieferschein != null) {
+            mustangInvoice.setDespatchAdviceReferencedDocumentID(lieferschein);
+        }
+    }
+
     private void extractInvoicePaymentTerms(Invoice mustangInvoice) {
         InternPaymentTerms paymentTerms = internInvoice.getPaymentTerms();
         if (paymentTerms == null) {
@@ -457,7 +546,28 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
         mustangPaymentTerms[0] = (new IZUGFeRDPaymentTerms() {
             @Override
             public String getDescription() {
-                return paymentTerms.getPaymentTermsText();
+                String text = paymentTerms.getPaymentTermsText();
+                if (text == null) {
+                    text = "";
+                }
+                // XRechnung laesst nur EINE Zahlungsbedingung zu, deshalb sind
+                // die Skontostufen oben ausgeklammert. Damit das Skonto trotzdem
+                // maschinell lesbar bleibt, schreibt die XRechnung dafuer eine
+                // feste Form in BT-20 vor - je Stufe eine eigene Zeile:
+                //     #SKONTO#TAGE=10#PROZENT=2.00#
+                // BASISBETRAG entfaellt, weil sich das Skonto bei uns immer auf
+                // den faelligen Gesamtbetrag (BT-115) bezieht.
+                if ("X".equals(applusEinterface)) {
+                    String skonto = skontoZeile(discountDays1, discountPercent1)
+                                  + skontoZeile(discountDays2, discountPercent2);
+                    if (!skonto.isEmpty()) {
+                        if (!text.isEmpty() && !text.endsWith("\n")) {
+                            text = text + "\n";
+                        }
+                        text = text + skonto;
+                    }
+                }
+                return text;
             }
 
             @Override
@@ -584,24 +694,57 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
      */
     private void integrateTexts(Invoice mustangInvoice, Map<String, String> textFields) {
         // Add notes as IncludedNotes with appropriate subject codes
-        if (textFields.get("STDTEXT") != null) {
+        if (isNoteEnabled("STDTEXT") && textFields.get("STDTEXT") != null) {
             mustangInvoice.addNotes(Collections.singletonList(IncludedNote.generalNote(textFields.get("STDTEXT"))));
         }
-        if (textFields.get("FUSSTEXT") != null) {
+        if (isNoteEnabled("FUSSTEXT") && textFields.get("FUSSTEXT") != null) {
             mustangInvoice.addNotes(Collections.singletonList(IncludedNote.regulatoryNote(textFields.get("FUSSTEXT"))));
         }
-        if (textFields.get("FREITEXT") != null) {
+        if (isNoteEnabled("FREITEXT") && textFields.get("FREITEXT") != null) {
             mustangInvoice.addNotes(Collections.singletonList(IncludedNote.unspecifiedNote(textFields.get("FREITEXT"))));
         }
-        if (textFields.get("IHRTEXT") != null) {
+        if (isNoteEnabled("IHRTEXT") && textFields.get("IHRTEXT") != null) {
             mustangInvoice.addNotes(Collections.singletonList(IncludedNote.sellerNote(textFields.get("IHRTEXT"))));
         }
-        if (textFields.get("KOPFTEXT") != null) {
+        if (isNoteEnabled("KOPFTEXT") && textFields.get("KOPFTEXT") != null) {
             mustangInvoice.addNotes(Collections.singletonList(IncludedNote.introductionNote(textFields.get("KOPFTEXT"))));
         }
-        if (textFields.get("FACTORINGTEXT") != null) {
+        if (isNoteEnabled("FACTORINGTEXT") && textFields.get("FACTORINGTEXT") != null) {
             mustangInvoice.addNotes(Collections.singletonList(IncludedNote.generalNote(textFields.get("FACTORINGTEXT"))));
         }
+    }
+
+    /**
+     * Prueft, ob ein Belegtext als Kopf-Hinweis (ram:IncludedNote) uebertragen
+     * werden soll.
+     *
+     * <p>Gesteuert ueber den Konvertierungsschluessel <code>NOTES</code>: eine
+     * kommaseparierte Liste der gewuenschten Feldnamen aus
+     * {STDTEXT, FUSSTEXT, FREITEXT, IHRTEXT, KOPFTEXT, FACTORINGTEXT, GF},
+     * in APplus gefuellt aus der SysConf CUSTOM/E-RECHNUNG/ANP_ERECHNUNG_NOTES.
+     * GF steht dabei nicht fuer einen Belegtext, sondern fuer den aus den
+     * FIRMA-Stammdaten (GF1/GF2) erzeugten Geschaeftsfuehrer-Hinweis.
+     * Fehlt der Schluessel oder ist er leer, werden - wie bisher - alle
+     * gefuellten Texte uebertragen.
+     *
+     * <p>Hintergrund: manche Kunden nutzen einzelne Belegtexte (z.B. FREITEXT,
+     * in der Maske das Register "Zusaetze") fuer interne Vermerke, die nicht in
+     * die E-Rechnung gehoeren.
+     *
+     * @param field Feldname des Belegtextes
+     * @return true, wenn der Text uebertragen werden soll
+     */
+    private boolean isNoteEnabled(String field) {
+        String configured = (conversionKeys == null) ? null : conversionKeys.get("NOTES");
+        if (configured == null || configured.trim().isEmpty()) {
+            return true;
+        }
+        for (String part : configured.split(",")) {
+            if (part.trim().equalsIgnoreCase(field)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -684,7 +827,10 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
         }
         
         for (InternInvoiceItem internItem : internItems) {
-            // DONTPRINT: Position komplett überspringen (nicht anzeigen, nicht berechnen)
+            // DONTPRINT: Position komplett überspringen (nicht anzeigen, nicht berechnen).
+            // DONTPRINTPRICE ist dagegen reine PDF-Darstellungssteuerung und darf die
+            // Position NICHT aus der E-Rechnung entfernen - sie bleibt als Zeile
+            // erhalten, nur ohne Preis (s.u.).
             if (Boolean.TRUE.equals(internItem.getDontPrint())) {
                 continue;
             }
@@ -746,14 +892,42 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
                 if (amounts.getDiscountAmount2() != null) rabatt2 = amounts.getDiscountAmount2();
                 if (amounts.getQuantityDiscountAmount() != null) mrabatt = amounts.getQuantityDiscountAmount();
             }
-            
+
+            // APplus fuehrt Zuschlaege als NEGATIVE Rabattbetraege. Sie duerfen die
+            // Rabattsumme nicht mindern, sondern muessen den Zeilenbetrag erhoehen -
+            // in ZUGFeRD also eine eigene Charge (BG-28) statt einer Allowance
+            // (BG-27). Vorher fiel ein reiner Zuschlag ueber das "> 0" komplett
+            // heraus und fehlte im Zeilenbetrag.
+            BigDecimal summRabatt = BigDecimal.ZERO;
+            BigDecimal summZuschlag = BigDecimal.ZERO;
+            for (BigDecimal betrag : new BigDecimal[] { rabatt1, rabatt2, mrabatt }) {
+                int vorzeichen = betrag.compareTo(BigDecimal.ZERO);
+                if (vorzeichen > 0) {
+                    summRabatt = summRabatt.add(betrag);
+                } else if (vorzeichen < 0) {
+                    summZuschlag = summZuschlag.subtract(betrag); // Betrag ist negativ -> Absolutwert
+                }
+            }
+
+            // DONTPRINTPRICE: die Position bleibt als Zeile erhalten (nur DONTPRINT
+            // filtert sie heraus), geht aber mit Preis und Steuer 0 in den Beleg -
+            // sie zaehlt also NICHT in die Rechnungssumme, unabhaengig davon, ob in
+            // APplus ein Preis an der Position haengt (Vorgabe 03.09.2026).
+            // Weicht die Kopfsumme dadurch von APplus ab, meldet das der
+            // Betragsvergleich in Anp_ERechnungProcessorUtil als Validierungsfehler.
+            boolean dontPrintPrice = Boolean.TRUE.equals(internItem.getDontPrintPrice());
+
             // Produktinformationen
             Product product = new Product();
             if (internItem.getText() != null) {
                 product.setName(internItem.getText().getName());
                 product.setDescription(internItem.getText().getText());
             }
-            
+            // BR-25: jede BG-25 MUSS einen Item name (BT-153) tragen. Ersatzname
+            // aber nur fuer Gliederungszeilen - eine gewoehnliche Position ohne
+            // Bezeichnung soll weiterhin durch die Validierung fallen.
+            product.setName(resolveItemName(internItem, product, dontPrintPrice));
+
             // Produktklassifikationen
             InternItemMasterData masterData = internItem.getMasterData();
             if (masterData != null) {
@@ -779,17 +953,45 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
             // Erstelle die Position
             Item item = new Item();
             
-            // Rabatte als Allowances hinzufügen (nicht bei DONTPRINTPRICE)
-            if (!Boolean.TRUE.equals(internItem.getDontPrintPrice())) {
-                BigDecimal summRabatt = rabatt1.add(rabatt2).add(mrabatt);
+            // Rabatt auf PRODUKT-Ebene (ram:GrossPriceProductTradePrice/
+            // ram:AppliedTradeAllowanceCharge), also PRO EINHEIT - deshalb die
+            // Umrechnung "x PACKMENGE / MENGE". Zuschlag dagegen auf Zeilenebene
+            // (s.u.) mit dem absoluten Betrag.
+            //
+            // ACHTUNG, Upstream-Falle: bis Mustang 2.15.3 lag genau diese Semantik auf
+            // item.addAllowance(). Mit 2.24 (Upstream-Commit 7c2e39b9) sind
+            // Item::getAllowances/getCharges entfallen; item.addAllowance() bedeutet
+            // seither eine ABSOLUTE Allowance auf Zeilenebene (BG-27), die genau EINMAL
+            // vom Zeilenbetrag abgezogen wird. Mit der Umrechnung pro Einheit wurde der
+            // Rabatt dadurch um den Faktor MENGE zu klein. product.addAllowance() haelt
+            // die alte, hier gemeinte Bedeutung.
+            //
+            // MENGE=0 wuerde in der Umrechnung eine Division durch 0 ausloesen und die
+            // komplette Konvertierung abbrechen.
+            if (!dontPrintPrice && quantity.compareTo(BigDecimal.ZERO) != 0) {
                 if (summRabatt.compareTo(BigDecimal.ZERO) > 0) {
-                    summRabatt = summRabatt.multiply(packmenge).divide(quantity, 10, BigDecimal.ROUND_HALF_UP);
-                    Allowance discountAllowance = new Allowance(summRabatt);
+                    BigDecimal rabattProEinheit =
+                            summRabatt.multiply(packmenge).divide(quantity, 10, BigDecimal.ROUND_HALF_UP);
+                    Allowance discountAllowance = new Allowance(rabattProEinheit);
                     discountAllowance.setReason("Rabatt");
                     if (!applusEinterface.equals("X"))
                     		discountAllowance.setReasonCode("60");
                     discountAllowance.setTaxPercent(product.getVATPercent());
-                    item.addAllowance(discountAllowance); // Add allowance to the item
+                    product.addAllowance(discountAllowance);
+                }
+                if (summZuschlag.compareTo(BigDecimal.ZERO) > 0) {
+                    // Zuschlag NICHT auf Preisebene: PEPPOL-EN16931-R044 verbietet dort
+                    // ChargeIndicator=true ("Charge on price level is NOT allowed"), und
+                    // R046 verlangt netto = brutto - Rabatt. Deshalb als Zeilen-Charge
+                    // (BG-28, ram:SpecifiedLineTradeSettlement/ram:SpecifiedTradeAllowanceCharge)
+                    // mit dem ABSOLUTEN Zeilenbetrag - die wird einmal auf den
+                    // Zeilenbetrag addiert, nicht mit der Menge multipliziert.
+                    Charge surcharge = new Charge(summZuschlag);
+                    surcharge.setReason("Zuschlag");
+                    if (!applusEinterface.equals("X"))
+                    		surcharge.setReasonCode("ZZZ");
+                    surcharge.setTaxPercent(product.getVATPercent());
+                    item.addCharge(surcharge);
                 }
             }
             // USERPOS als LineID verwenden, Fallback auf POSITION
@@ -799,7 +1001,7 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
             item.setQuantity(quantity);
 
             // DONTPRINTPRICE: Position anzeigen, aber ohne Preis
-            if (Boolean.TRUE.equals(internItem.getDontPrintPrice())) {
+            if (dontPrintPrice) {
                 item.setPrice(BigDecimal.ZERO);
                 item.setBasisQuantity(BigDecimal.ONE);
                 item.setTax(BigDecimal.ZERO);
@@ -818,7 +1020,82 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
         
         return items;
     }
-    
+
+    /** Ersatzbezeichnung fuer eine Gliederungszeile ohne Bezeichnung. */
+    private static final String FALLBACK_ITEM_NAME = "Textposition";
+
+    /** Ersatzbezeichnung fuer eine Gliederungszeile mit KAPITELSUMME. */
+    private static final String FALLBACK_CHAPTER_SUM_NAME = "Kapitelsumme";
+
+    /** Ersatzbezeichnung fuer eine Gliederungszeile mit ZWISCHENSUMME. */
+    private static final String FALLBACK_SUBTOTAL_NAME = "Zwischensumme";
+
+    /**
+     * Ermittelt den Item name (BT-153): NAME, ersatzweise NAMEINTERN (beides
+     * bereits in {@code product.getName()} zusammengefuehrt).
+     *
+     * <p>Reihenfolge: NAME/NAMEINTERN, dann - nur fuer Gliederungszeilen, die
+     * APplus selbst kennzeichnet (DONTPRINTPRICE, TEXTPOS, KAPITELSUMME,
+     * ZWISCHENSUMME) - "Kapitelsumme" / "Zwischensumme" / "Textposition", und
+     * fuer jede andere Position ersatzweise die <b>Artikelnummer</b>.
+     *
+     * <p>TEXTPOS/KAPITELSUMME/ZWISCHENSUMME sind noetig, weil DONTPRINTPRICE
+     * allein nicht traegt: eine Textposition kann die Kennzeichnung "Preis
+     * nicht drucken" verlieren (beobachtet an einer Schlussrechnung, Pos. 2.3
+     * "Zubehoer Schmierstoff") und riss dann mit einem leeren ram:Name
+     * gleichzeitig BR-25 und PEPPOL-EN16931-R008 auf.
+     *
+     * <p>Leer - und damit ein sichtbarer Datenfehler ueber BR-25 /
+     * PEPPOL-EN16931-R008 - bleibt der Name nur, wenn eine gewoehnliche Position
+     * weder Bezeichnung noch Artikelnummer hat.
+     *
+     * <p>Der Positionstext bleibt die Description (BT-154) und wird hier nie
+     * als Name verwendet.
+     */
+    private static String resolveItemName(InternInvoiceItem item, Product product,
+            boolean dontPrintPrice) {
+        String name = product.getName();
+        if (name != null && !name.trim().isEmpty()) {
+            return name.trim();
+        }
+
+        InternItemSpecialFlags flags = item.getSpecialFlags();
+        boolean chapterSum = flags != null && isFlagSet(flags.getChapterSum());
+        boolean subtotal = flags != null && isFlagSet(flags.getSubtotal());
+        boolean textPosition = flags != null && isFlagSet(flags.getTextPosition());
+
+        if (dontPrintPrice || chapterSum || subtotal || textPosition) {
+            if (chapterSum) {
+                return FALLBACK_CHAPTER_SUM_NAME;
+            }
+            if (subtotal) {
+                return FALLBACK_SUBTOTAL_NAME;
+            }
+            return FALLBACK_ITEM_NAME;
+        }
+
+        // Gewoehnliche Position ohne Bezeichnung: die Artikelnummer ist besser als
+        // nichts - ohne Item name faellt der ganze Beleg ueber BR-25 durch.
+        // Beobachtet an RE 3004532 Pos 6 (Artikel "Rabatt" ohne Benennung).
+        // Bewusst NACH den Gliederungs-Flags: eine Textposition, die eine
+        // Platzhalter-Artikelnummer traegt, soll weiter "Textposition" heissen.
+        InternItemMasterData masterData = item.getMasterData();
+        String artikelnummer = (masterData == null) ? null : masterData.getArticleNumber();
+        if (artikelnummer != null && !artikelnummer.trim().isEmpty()) {
+            return artikelnummer.trim();
+        }
+
+        return name; // absichtlich leer -> Validierung muss anschlagen
+    }
+
+    /** APplus liefert Bool-Flags als "1"/"0" oder "true"/"false". */
+    private static boolean isFlagSet(String value) {
+        if (value == null) {
+            return false;
+        }
+        String trimmed = value.trim();
+        return "1".equals(trimmed) || "true".equalsIgnoreCase(trimmed);
+    }
 
 	private Date parseDate(String dateString) {
 	    if (dateString == null || dateString.isEmpty()) {
