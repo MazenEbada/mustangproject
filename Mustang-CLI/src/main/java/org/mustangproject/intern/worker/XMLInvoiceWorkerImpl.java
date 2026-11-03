@@ -36,7 +36,13 @@ import org.xml.sax.SAXException;
 public class XMLInvoiceWorkerImpl implements XMLInvoiceWorker {
 
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-    
+
+    /**
+     * Kenner "Zolltarifnr. drucken" (RECHNUNG.PRINTCUSTOMSNUMBER). Nur wenn er
+     * gesetzt ist, wird die Zolltarifnummer der Positionen uebernommen.
+     */
+    private boolean printCustomsNumber;
+
     @Override
     public InternInvoice processInput(String inputData, Map<String, String> conversionKeys) throws Exception {
         try {
@@ -52,7 +58,8 @@ public class XMLInvoiceWorkerImpl implements XMLInvoiceWorker {
             
             // Auslesen des Rechnungelements
             Element rechnungElement = getElement(doc, "rechnung");
-            
+            printCustomsNumber = Boolean.TRUE.equals(parseBoolean(getElementValue(rechnungElement, "PRINTCUSTOMSNUMBER")));
+
             // Extrahieren und Setzen der Verkäuferadresse
             extractSellerAddress(doc, invoice);
 
@@ -155,6 +162,10 @@ public class XMLInvoiceWorkerImpl implements XMLInvoiceWorker {
         address.setBic(getElementValue(bankElement, "SWIFT"));
         address.setIban(getElementValue(firmaElement, "IBAN"));
         address.setPaymentMethods(getElementValue(firmaElement, "ZAHLARTEN"));
+        // CUSTOM:AMC/MEB:03.11.2026: weitere Bankverbindungen des Verkaeufers (Glaeser/Meyer).
+        // ANP_IBAN2/3 aus dem Firmenstamm, BIC per Span aus BANK.SWIFT zu ANP_BANK2/3.
+        address.addAdditionalBankAccount(getElementValue(firmaElement, "ANP_IBAN2"), getElementValue(firmaElement, "ANP_SWIFT2"));
+        address.addAdditionalBankAccount(getElementValue(firmaElement, "ANP_IBAN3"), getElementValue(firmaElement, "ANP_SWIFT3"));
     }
     
     /**
@@ -204,6 +215,7 @@ public class XMLInvoiceWorkerImpl implements XMLInvoiceWorker {
         address.setBic(getElementValue(bankElement, "SWIFT"));
         address.setIban(getElementValue(firmaElement, "IBAN"));
         address.setPaymentMethods(getElementValue(firmaElement, "ZAHLARTEN"));
+        address.setMandateReference(getElementValue(firmaElement, "ANP_MANDATSREFERENZ"));
     }
     
     /**
@@ -393,6 +405,7 @@ public class XMLInvoiceWorkerImpl implements XMLInvoiceWorker {
             address.setBic(getElementValue(rBankElement, "SWIFT"));
             address.setIban(getElementValue(rFirmaElement, "IBAN"));
             address.setPaymentMethods(getElementValue(rFirmaElement, "ZAHLARTEN"));
+            address.setMandateReference(getElementValue(rFirmaElement, "ANP_MANDATSREFERENZ"));
         } else {
             // Keine Rechnungsadresse vorhanden, Kundenadresse als Fallback verwenden
             InternAddress customerAddress = invoice.getCustomerAddress();
@@ -424,6 +437,7 @@ public class XMLInvoiceWorkerImpl implements XMLInvoiceWorker {
             invoiceAddress.setBic(customerAddress.getBic());
             invoiceAddress.setIban(customerAddress.getIban());
             invoiceAddress.setPaymentMethods(customerAddress.getPaymentMethods());
+            invoiceAddress.setMandateReference(customerAddress.getMandateReference());
         }
     }
     
@@ -487,6 +501,9 @@ public class XMLInvoiceWorkerImpl implements XMLInvoiceWorker {
         String iban = getElementValue(stdtxtBPElement, "ANP_IBAN");
         if (iban != null) {
             sellerAddress.setIban(iban.replaceAll("\\s+", ""));
+            // CUSTOM:AMC/MEB:03.11.2026: bei Factoring gilt NUR die Bankverbindung des
+            // Factorers - weitere eigene Bankverbindungen (ANP_IBAN2/3) entfallen.
+            sellerAddress.getAdditionalBankAccounts().clear();
         }
 
         // BIC überschreiben
@@ -1050,7 +1067,9 @@ public class XMLInvoiceWorkerImpl implements XMLInvoiceWorker {
     private void extractItemMasterData(Element element, InternItemMasterData masterData) {
         masterData.setBatch(getElementValue(element, "CHARGE"));
         masterData.setCountryOfOrigin(getElementValue(element, "URSPRUNGSLANDISO"));
-        masterData.setCustomsTariffNumber(getElementValue(element, "ZOLLTARIFNR"));
+        if (printCustomsNumber) {
+            masterData.setCustomsTariffNumber(getElementValue(element, "ZOLLTARIFNR"));
+        }
         masterData.setEanCode(getElementValue(element, "EANCODE"));
         masterData.setArticleNumber(getElementValue(element, "ARTIKEL"));
         masterData.setCustomerArticleNumber(getElementValue(element, "KARTIKEL"));

@@ -10,6 +10,7 @@ import org.mustangproject.Allowance;
 import org.mustangproject.BankDetails;
 import org.mustangproject.Charge;
 import org.mustangproject.Contact;
+import org.mustangproject.DirectDebit;
 import org.mustangproject.IncludedNote;
 import org.mustangproject.Invoice;
 import org.mustangproject.Item;
@@ -212,6 +213,9 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
         // Step 6: Extract Payment Terms
         extractInvoicePaymentTerms(mustangInvoice);
 
+        // Step 6b: Zahlart des Kunden (Lastschrift statt Ueberweisung)
+        applyPaymentMeans(mustangInvoice, seller);
+
         // Step 7: Extract Dates
         extractDates(mustangInvoice);
 
@@ -224,6 +228,56 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
         // Step 9: Extract Additional Notes
         Map<String, String> textFields = extractTextFields();
         integrateTexts(mustangInvoice, textFields);
+    }
+
+    /**
+     * APplus-Zahlarten (FIRMA.ZAHLARTEN, SysConf FIBU/ZAHLARTEN), bei denen der
+     * Verkaeufer den Betrag einzieht: 1 Abbuchung, 5 Lastschrift,
+     * 32 SEPA-Basislastschrift, 33 SEPA-Firmenlastschrift.
+     */
+    private static final java.util.Set<String> LASTSCHRIFT_ZAHLARTEN =
+            new java.util.HashSet<>(java.util.Arrays.asList("1", "5", "32", "33"));
+
+    /**
+     * Zahlart (BG-16) aus der Zahlart VK der Rechnungsadresse.
+     *
+     * <p>Lastschrift-Zahlart: TypeCode 59 (SEPA-Lastschrift) mit Mandatsreferenz
+     * (BT-89, FIRMA.ANP_MANDATSREFERENZ), IBAN des Kunden (BT-91, FIRMA.IBAN) und
+     * Glaeubiger-ID (BT-90, Konvertierungsschluessel GLAEUBIGERID). Die Bankverbindung
+     * des Verkaeufers (TypeCode 58) entfaellt dann - eine Rechnung hat genau eine
+     * Zahlart. Fehlende Angaben werden nicht ersetzt: die Validierung meldet sie,
+     * statt dass die Rechnung still als Ueberweisung hinausgeht.
+     *
+     * <p>Alle anderen Zahlarten bleiben beim bisherigen Verhalten (58, Ueberweisung).
+     */
+    private void applyPaymentMeans(Invoice invoice, TradeParty seller) {
+        InternAddress rechnungsadresse = internInvoice.getInvoiceAddress();
+        if (seller == null || rechnungsadresse == null
+                || !isLastschrift(rechnungsadresse.getPaymentMethods())) {
+            return;
+        }
+        String iban = rechnungsadresse.getIban() == null ? "" : rechnungsadresse.getIban().replace(" ", "");
+        String mandat = rechnungsadresse.getMandateReference() == null ? "" : rechnungsadresse.getMandateReference().trim();
+        seller.getBankDetails().clear();
+        seller.addDebitDetails(new DirectDebit(iban, mandat));
+
+        String glaeubigerId = (conversionKeys == null) ? null : conversionKeys.get("GLAEUBIGERID");
+        if (glaeubigerId != null && !glaeubigerId.trim().isEmpty()) {
+            invoice.setCreditorReferenceID(glaeubigerId.trim());
+        }
+    }
+
+    /** Zahlart-Code aus APplus (ggf. "5" oder "5: Lastschrift") gegen die Lastschrift-Codes pruefen. */
+    private static boolean isLastschrift(String zahlart) {
+        if (zahlart == null) {
+            return false;
+        }
+        String code = zahlart.trim();
+        int ende = 0;
+        while (ende < code.length() && Character.isDigit(code.charAt(ende))) {
+            ende++;
+        }
+        return ende > 0 && LASTSCHRIFT_ZAHLARTEN.contains(code.substring(0, ende));
     }
 
     /**
@@ -255,7 +309,12 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
         // EN16931-CII-validation.xslt). In ZUGFeRD EXTENDED ist es erlaubt und
         // bleibt deshalb erhalten. BT-13 (die Bestellnummer selbst) ist davon
         // nicht betroffen und wird weiterhin in beiden Profilen gesetzt.
-        if (metadata.getOrderDate() != null && !"X".equals(applusEinterface)) {
+        // Ohne Bestellnummer auch kein Datum: das Element hat dann keine
+        // ram:IssuerAssignedID, die im Kopf Pflicht ist ("Element
+        // 'ram:IssuerAssignedID' must occur exactly 1 times").
+        String customerOrderNumber = metadata.getCustomerOrderNumber();
+        if (metadata.getOrderDate() != null && !"X".equals(applusEinterface)
+                && customerOrderNumber != null && !customerOrderNumber.trim().isEmpty()) {
             Date orderDate = Date.from(metadata.getOrderDate().atStartOfDay(ZoneId.systemDefault()).toInstant());
             mustangInvoice.setBuyerOrderReferencedDocumentIssueDateTime(orderDate);
         }
@@ -398,6 +457,19 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
         bankDetails.setAccountName(
             address.getAccountName() != null ? address.getAccountName() : address.getCompanyName1());
         tradeParty.getBankDetails().add(bankDetails);
+
+        // CUSTOM:AMC/MEB:03.11.2026: weitere Bankverbindungen des Verkaeufers - je eine
+        // eigene ram:SpecifiedTradeSettlementPaymentMeans (BG-16/BG-17). Bei Lastschrift
+        // ersetzt applyPaymentMeans alle Bankverbindungen.
+        if ("V".equalsIgnoreCase(type) && address.getAdditionalBankAccounts() != null) {
+            for (String[] konto : address.getAdditionalBankAccounts()) {
+                BankDetails weitere = new BankDetails();
+                weitere.setIBAN(konto[0]);
+                weitere.setBIC(konto[1]);
+                weitere.setAccountName(address.getCompanyName1());
+                tradeParty.getBankDetails().add(weitere);
+            }
+        }
 
         // Für den Verkäufer (Typ "V") setze zusätzliche Informationen
         if ("V".equalsIgnoreCase(type)) {
@@ -754,6 +826,24 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
     }
 
     /**
+     * Prueft, ob der Verkaufstext (Positionstext) statt der Artikelbenennung als
+     * Item name (BT-153) uebertragen werden soll.
+     *
+     * <p>Gesteuert ueber den Konvertierungsschluessel <code>ITEMNAME</code>:
+     * <code>TEXT</code> = Verkaufstext wird der Name, die Artikelbenennung
+     * entfaellt und es gibt keine Description (BT-154). Fehlt der Schluessel oder
+     * steht er auf <code>NAME</code>, bleibt es beim bisherigen Verhalten
+     * (Benennung = Name, Verkaufstext = Description).
+     * In APplus gefuellt aus der SysConf CUSTOM/E-RECHNUNG/ANP_ERECHNUNG_VERKAUFSTEXTALSNAME.
+     *
+     * @return true, wenn der Verkaufstext der Item name sein soll
+     */
+    private boolean isSalesTextAsItemName() {
+        String configured = (conversionKeys == null) ? null : conversionKeys.get("ITEMNAME");
+        return configured != null && "TEXT".equalsIgnoreCase(configured.trim());
+    }
+
+    /**
      * Extrahiert Textfelder aus dem InternInvoice-Objekt
      * 
      * @return Eine Map mit Textfeldern
@@ -831,7 +921,11 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
         if (internItems == null) {
             return items;
         }
-        
+
+        // Koepfe mit "Preis aus Unterpositionen" (s. findPricedHeads) und die
+        // Positionen, deren Betrag bereits in einem solchen Kopf steckt.
+        Map<InternInvoiceItem, BigDecimal> pricedHeads = findPricedHeads(internItems);
+
         for (InternInvoiceItem internItem : internItems) {
             // DONTPRINT: Position komplett überspringen (nicht anzeigen, nicht berechnen).
             // DONTPRINTPRICE ist dagegen reine PDF-Darstellungssteuerung und darf die
@@ -846,6 +940,8 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
             if (quantity == null) quantity = BigDecimal.ONE; // Fallback
 
             InternItemAmounts amounts = internItem.getAmounts();
+            BigDecimal headTaxRate = pricedHeads.get(internItem);
+            boolean insidePricedHead = headTaxRate == null && isInsidePricedHead(internItem, pricedHeads);
 
             BigDecimal packmenge = BigDecimal.ONE;
             if (amounts != null && amounts.getPackageQuantity() != null
@@ -855,11 +951,30 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
 
             BigDecimal net = amounts != null ? amounts.getNet() : null;
             BigDecimal mengeInPreisMe = amounts != null ? amounts.getMengeInPreisMe() : null;
+            BigDecimal nettoErloes = amounts != null ? amounts.getNetRevenue() : null;
 
             BigDecimal unitPrice;
             BigDecimal basisQty;
 
             if (mengeInPreisMe != null && mengeInPreisMe.compareTo(BigDecimal.ZERO) != 0
+                    && quantity.compareTo(BigDecimal.ZERO) != 0
+                    && net != null && net.compareTo(BigDecimal.ZERO) != 0
+                    && nettoErloes != null && nettoErloes.compareTo(BigDecimal.ZERO) != 0) {
+                // NETTO muss gesetzt sein: Zwischensummen (USERPOS "x.y*") tragen keinen
+                // Einzelpreis, aber die Summe ihrer Positionen im ERLOES - sie muessen
+                // weiter mit Preis 0 hinein, sonst zaehlt der Betrag doppelt.
+                // CUSTOM:AMC/MEB:28.10.2026: VKME != PREISME - Preis je VKME aus dem
+                // Betrag, den APplus selbst gerechnet hat (NETTOERLOES = ERLOES + Rabatte),
+                // NICHT ueber den Umrechnungsfaktor. udf_ConvertMe liefert den Faktor auf
+                // 3 Stellen gerundet (6 m / 6,1 m/ST -> 0.984 statt 0.98361), und der
+                // Erloes einer Position bleibt auf dem Stand ihrer Anlage, auch wenn die
+                // Umrechnung im Artikelstamm spaeter geaendert wird (Hagelschuer
+                // AR126-01856: Pos 1.14.6 71,28 statt 71,25; Pos 2.37.68 mit 6 m statt
+                // 6,1 m gerechnet). Mit NETTOERLOES / MENGE ergibt MENGE x Nettopreis
+                // immer genau den APplus-Erloes.
+                unitPrice = nettoErloes.divide(quantity, 10, BigDecimal.ROUND_HALF_UP);
+                basisQty = BigDecimal.ONE;
+            } else if (mengeInPreisMe != null && mengeInPreisMe.compareTo(BigDecimal.ZERO) != 0
                     && quantity.compareTo(BigDecimal.ZERO) != 0
                     && net != null) {
                 // ANP_MENGEINPREISME vorhanden: VKME != PREISME
@@ -887,7 +1002,21 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
                 if (tax == null) tax = BigDecimal.ZERO;
                 if (taxPercent == null) taxPercent = BigDecimal.ZERO;
             }
-            
+
+            // Kopf mit "Preis aus Unterpositionen": NETTO/PREIS/UST sind leer, der
+            // Betrag steht nur im ERLOES. Preis = ERLOES / MENGE, Steuersatz von den
+            // Unterpositionen - sonst ginge der Kopf mit 0 und Kategorie Z raus.
+            if (headTaxRate != null) {
+                BigDecimal revenue = amounts.getRevenue();
+                unitPrice = quantity.compareTo(BigDecimal.ZERO) != 0
+                        ? revenue.divide(quantity, 10, BigDecimal.ROUND_HALF_UP)
+                        : revenue;
+                basisQty = BigDecimal.ONE;
+                taxPercent = headTaxRate;
+                tax = revenue.multiply(headTaxRate)
+                        .divide(new BigDecimal(100), 2, BigDecimal.ROUND_HALF_UP);
+            }
+
             // Rabatte
             BigDecimal rabatt1 = BigDecimal.ZERO;
             BigDecimal rabatt2 = BigDecimal.ZERO;
@@ -922,12 +1051,27 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
             // Weicht die Kopfsumme dadurch von APplus ab, meldet das der
             // Betragsvergleich in Anp_ERechnungProcessorUtil als Validierungsfehler.
             boolean dontPrintPrice = Boolean.TRUE.equals(internItem.getDontPrintPrice());
+            // Unter einem Kopf mit "Preis aus Unterpositionen" steckt der Betrag
+            // bereits im Kopf - die Position geht wie DONTPRINTPRICE mit 0 hinein,
+            // auch wenn sie selbst kein "Preis nicht drucken" traegt.
+            boolean zeroPrice = dontPrintPrice || insidePricedHead;
 
             // Produktinformationen
             Product product = new Product();
             if (internItem.getText() != null) {
-                product.setName(internItem.getText().getName());
-                product.setDescription(internItem.getText().getText());
+                if (isSalesTextAsItemName()) {
+                    // ITEMNAME=TEXT: der Verkaufstext (Positionstext) wird der Item
+                    // name (BT-153), die Artikelbenennung entfaellt, eine Description
+                    // (BT-154) wird nicht geschrieben. Ist der Verkaufstext leer,
+                    // bleibt die Benennung als Ersatz - sonst fiele die Position
+                    // ueber BR-25 durch.
+                    String salesText = internItem.getText().getText();
+                    product.setName(salesText != null && !salesText.trim().isEmpty()
+                            ? salesText.trim() : internItem.getText().getName());
+                } else {
+                    product.setName(internItem.getText().getName());
+                    product.setDescription(internItem.getText().getText());
+                }
             }
             // BR-25: jede BG-25 MUSS einen Item name (BT-153) tragen. Ersatzname
             // aber nur fuer Gliederungszeilen - eine gewoehnliche Position ohne
@@ -950,7 +1094,10 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
             }
             
             product.setVATPercent(taxPercent);
-            
+            applyTaxCategory(product,
+                    amounts != null && amounts.getTax() != null ? amounts.getTax().getTaxCategory() : null,
+                    taxPercent);
+
             // Einheit mappen
             String unitType = internItem.getUnit();
             String unitCode = (unitType != null) ? UNIT_CODE_MAPPING.getOrDefault(unitType, "C62") : "C62";
@@ -974,10 +1121,17 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
             //
             // MENGE=0 wuerde in der Umrechnung eine Division durch 0 ausloesen und die
             // komplette Konvertierung abbrechen.
-            if (!dontPrintPrice && quantity.compareTo(BigDecimal.ZERO) != 0) {
+            // Kopf mit Preis aus Unterpositionen: ERLOES ist bereits der Endbetrag,
+            // Rabatte/Zuschlaege duerfen nicht noch einmal abgehen.
+            if (!zeroPrice && headTaxRate == null && quantity.compareTo(BigDecimal.ZERO) != 0) {
                 if (summRabatt.compareTo(BigDecimal.ZERO) > 0) {
+                    // Rabatt auf dieselbe Preisbasis wie der Bruttopreis (basisQty), NICHT
+                    // pauschal PACKMENGE: im ANP_MENGEINPREISME-Zweig ist der Preis bereits
+                    // auf VKME umgerechnet (basisQty = 1) - mit PACKMENGE war der Rabatt
+                    // dort um den Faktor PACKMENGE zu gross (SL-Rack AR-26013496, Preis-ME
+                    // 100: Zeilenbetrag -3.286.193,08 statt 44.103,56).
                     BigDecimal rabattProEinheit =
-                            summRabatt.multiply(packmenge).divide(quantity, 10, BigDecimal.ROUND_HALF_UP);
+                            summRabatt.multiply(basisQty).divide(quantity, 10, BigDecimal.ROUND_HALF_UP);
                     Allowance discountAllowance = new Allowance(rabattProEinheit);
                     discountAllowance.setReason("Rabatt");
                     if (!applusEinterface.equals("X"))
@@ -1006,8 +1160,8 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
             item.setProduct(product);
             item.setQuantity(quantity);
 
-            // DONTPRINTPRICE: Position anzeigen, aber ohne Preis
-            if (dontPrintPrice) {
+            // DONTPRINTPRICE oder Betrag steckt im Kopf: Position anzeigen, aber ohne Preis
+            if (zeroPrice) {
                 item.setPrice(BigDecimal.ZERO);
                 item.setBasisQuantity(BigDecimal.ONE);
                 item.setTax(BigDecimal.ZERO);
@@ -1025,6 +1179,145 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
         }
         
         return items;
+    }
+
+    /**
+     * Uebernimmt die USt-Kategorie der Position (USTKATEGORIE, in APplus
+     * USTSATZPOS.STEUERKATEGORIE) samt Befreiungsgrund.
+     *
+     * <p>Ohne Kategorie entscheidet Mustang allein nach dem Satz: ueber 0 = S,
+     * 0 % = Z. Ausfuhr (G), innergemeinschaftliche Lieferung (K), Reverse
+     * Charge (AE) und steuerfreie Umsaetze (E) gingen dann als Z hinaus -
+     * formal gueltig, fachlich falsch.
+     *
+     * <p>Uebernommen wird nur, was zum Satz passt: ueber 0 nur S, bei 0 %
+     * Z, E, AE, K und G. Alles andere (Tippfehler, O, L, M, S bei 0 %) bleibt
+     * beim bisherigen Verhalten - lieber Z als eine Kategorie, deren
+     * Folgeregeln (BR-O-*, BR-S-05) die Rechnung ungueltig machen.
+     */
+    private void applyTaxCategory(Product product, String category, BigDecimal taxPercent) {
+        if (category == null || category.trim().isEmpty()) {
+            return;
+        }
+        String code = category.trim().toUpperCase();
+        boolean zeroRate = taxPercent == null || taxPercent.compareTo(BigDecimal.ZERO) == 0;
+        if (!zeroRate) {
+            if ("S".equals(code)) {
+                product.setTaxCategoryCode(code);
+            }
+            return;
+        }
+        boolean de = language == null || language.isEmpty() || language.equalsIgnoreCase("de");
+        switch (code) {
+            case "Z":
+                product.setTaxCategoryCode(code);
+                break;
+            case "E":
+                product.setTaxCategoryCode(code);
+                product.setTaxExemptionReason(de ? "Steuerfreier Umsatz" : "Exempt from VAT");
+                break;
+            case "AE":
+                product.setTaxCategoryCode(code);
+                product.setTaxExemptionReasonCode("VATEX-EU-AE");
+                product.setTaxExemptionReason(de ? "Steuerschuldnerschaft des Leistungsempfängers" : "Reverse charge");
+                break;
+            case "K":
+                product.setTaxCategoryCode(code);
+                product.setTaxExemptionReasonCode("VATEX-EU-IC");
+                product.setTaxExemptionReason(de ? "Steuerfreie innergemeinschaftliche Lieferung" : "Intra-community supply");
+                break;
+            case "G":
+                product.setTaxCategoryCode(code);
+                product.setTaxExemptionReasonCode("VATEX-EU-G");
+                product.setTaxExemptionReason(de ? "Steuerfreie Ausfuhrlieferung" : "Export outside the EU");
+                break;
+            default:
+                break;
+        }
+    }
+
+    /**
+     * Ermittelt die Koepfe mit "Preis aus Unterpositionen" und ihren Steuersatz.
+     *
+     * <p>Erkennung: NETTO leer, ERLOES ungleich 0, keine Zwischensumme, nicht
+     * DONTPRINT (beobachtet an Mietkesselanlagen, AR126-04287 Pos 1/2/3:
+     * NETTO/PREIS/UST NULL, ERLOES = Summe der Unterpositionen). APplus setzt an
+     * diesen Koepfen KAPITELSUMME=1 - das ist gerade das Merkmal und darf nicht
+     * ausschliessen. Zwischensummen (ZWISCHENSUMME, USERPOS "x.y*") wiederholen
+     * dagegen nur Betraege und bleiben aussen vor. Die
+     * Unterpositionen haengen nur ueber USERPOS daran ("3" -> "3.10", "3.10.1").
+     *
+     * <p>Der Steuersatz kommt aus dem Kopf selbst oder, wie dort ueblich leer, von
+     * den Unterpositionen - nur wenn die alle denselben Satz tragen; bei
+     * gemischten Saetzen laesst sich der Kopf nicht als eine Zeile abbilden und
+     * bleibt beim bisherigen Verhalten. Liegt ein Kopf unter einem anderen (z. B.
+     * 3.10 unter 3), zaehlt nur der aeussere.
+     *
+     * @return Kopf -&gt; Steuersatz, nur die aeussersten Koepfe
+     */
+    private static Map<InternInvoiceItem, BigDecimal> findPricedHeads(List<InternInvoiceItem> internItems) {
+        Map<InternInvoiceItem, BigDecimal> candidates = new HashMap<>();
+        for (InternInvoiceItem head : internItems) {
+            String headPos = head.getUserPos();
+            InternItemAmounts amounts = head.getAmounts();
+            InternItemSpecialFlags flags = head.getSpecialFlags();
+            if (headPos == null || headPos.trim().isEmpty() || amounts == null
+                    || amounts.getNet() != null || amounts.getRevenue() == null
+                    || amounts.getRevenue().signum() == 0
+                    || Boolean.TRUE.equals(head.getDontPrint())
+                    || (flags != null && isFlagSet(flags.getSubtotal()))) {
+                continue;
+            }
+
+            BigDecimal ownRate = amounts.getTax() != null ? amounts.getTax().getTaxRate() : null;
+            BigDecimal rate = ownRate;
+            if (rate == null) {
+                String prefix = headPos.trim() + ".";
+                for (InternInvoiceItem child : internItems) {
+                    String childPos = child.getUserPos();
+                    if (childPos == null || !childPos.trim().startsWith(prefix)
+                            || child.getAmounts() == null || child.getAmounts().getTax() == null) {
+                        continue;
+                    }
+                    BigDecimal childRate = child.getAmounts().getTax().getTaxRate();
+                    if (childRate == null) {
+                        continue;
+                    }
+                    if (rate == null) {
+                        rate = childRate;
+                    } else if (rate.compareTo(childRate) != 0) {
+                        rate = null; // gemischte Steuersaetze
+                        break;
+                    }
+                }
+            }
+            if (rate != null) {
+                candidates.put(head, rate);
+            }
+        }
+
+        Map<InternInvoiceItem, BigDecimal> heads = new HashMap<>();
+        for (Map.Entry<InternInvoiceItem, BigDecimal> entry : candidates.entrySet()) {
+            if (!isInsidePricedHead(entry.getKey(), candidates)) {
+                heads.put(entry.getKey(), entry.getValue());
+            }
+        }
+        return heads;
+    }
+
+    /** Liegt die Position (per USERPOS) unter einem der uebergebenen Koepfe? */
+    private static boolean isInsidePricedHead(InternInvoiceItem item, Map<InternInvoiceItem, BigDecimal> heads) {
+        String pos = item.getUserPos();
+        if (pos == null || heads.isEmpty()) {
+            return false;
+        }
+        pos = pos.trim();
+        for (InternInvoiceItem head : heads.keySet()) {
+            if (head != item && pos.startsWith(head.getUserPos().trim() + ".")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Ersatzbezeichnung fuer eine Gliederungszeile ohne Bezeichnung. */
@@ -1056,7 +1349,9 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
      * weder Bezeichnung noch Artikelnummer hat.
      *
      * <p>Der Positionstext bleibt die Description (BT-154) und wird hier nie
-     * als Name verwendet.
+     * als Name verwendet. Ausnahme: mit dem Konvertierungsschluessel
+     * <code>ITEMNAME=TEXT</code> steht er bereits vorher in
+     * {@code product.getName()} (siehe {@link #isSalesTextAsItemName()}).
      */
     private static String resolveItemName(InternInvoiceItem item, Product product,
             boolean dontPrintPrice) {

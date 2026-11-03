@@ -40,6 +40,9 @@ public class InternAddress {
     private String iban;
     private String accountName;
     private String paymentMethods;
+    private String mandateReference;
+    /** CUSTOM:AMC/MEB:03.11.2026: weitere Bankverbindungen des Verkaeufers, je {IBAN, BIC}. */
+    private java.util.List<String[]> additionalBankAccounts = new java.util.ArrayList<>();
 
     // Getter und Setter
     public String getDuns() {
@@ -248,5 +251,26 @@ public class InternAddress {
 
     public void setPaymentMethods(String paymentMethods) {
         this.paymentMethods = paymentMethods;
+    }
+
+    /** SEPA-Mandatsreferenz (BT-89) aus FIRMA.ANP_MANDATSREFERENZ. */
+    public String getMandateReference() {
+        return mandateReference;
+    }
+
+    public void setMandateReference(String mandateReference) {
+        this.mandateReference = mandateReference;
+    }
+
+    /** CUSTOM:AMC/MEB:03.11.2026: weitere Bankverbindungen (FIRMA.ANP_IBAN2/3 + BIC aus ANP_BANK2/3). */
+    public java.util.List<String[]> getAdditionalBankAccounts() {
+        return additionalBankAccounts;
+    }
+
+    public void addAdditionalBankAccount(String iban, String bic) {
+        String kompakt = (iban == null) ? "" : iban.replace(" ", "").trim();
+        if (!kompakt.isEmpty()) {
+            additionalBankAccounts.add(new String[] { kompakt, (bic == null || bic.trim().isEmpty()) ? null : bic.trim() });
+        }
     }
 }
