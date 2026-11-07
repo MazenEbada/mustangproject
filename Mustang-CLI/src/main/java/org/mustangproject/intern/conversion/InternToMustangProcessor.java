@@ -645,7 +645,9 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
                         text = text + skonto;
                     }
                 }
-                return text;
+                // Ohne Text null statt "": ein leeres <ram:Description/> verstoesst in
+                // der XRechnung gegen PEPPOL-EN16931-R008. BT-9 (Faelligkeit) bleibt.
+                return text.trim().isEmpty() ? null : text;
             }
 
             @Override

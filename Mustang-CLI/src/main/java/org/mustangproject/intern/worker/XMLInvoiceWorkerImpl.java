@@ -546,11 +546,14 @@ public class XMLInvoiceWorkerImpl implements XMLInvoiceWorker {
         
         InternPaymentTerms paymentTerms = invoice.getPaymentTerms();
         
-        if (zahlungsbedlngElement != null)
-            paymentTerms.setPaymentTermsText(getElementValue(zahlungsbedlngElement, "HTMLZBTXT"));
-        else
-            paymentTerms.setPaymentTermsText(getElementValue(zahlungsbedElement, "HTMLZBTXT"));
-        
+        // Sprachtext vor Stammtext - auch dann, wenn die Sprachzeile existiert, ihr
+        // Text aber leer ist (udf_plainText3 kann auch nur Leerzeichen liefern).
+        String zahlungsText = getElementValue(zahlungsbedlngElement, "HTMLZBTXT");
+        if (zahlungsText == null || zahlungsText.trim().isEmpty()) {
+            zahlungsText = getElementValue(zahlungsbedElement, "HTMLZBTXT");
+        }
+        paymentTerms.setPaymentTermsText(zahlungsText);
+
         String valueDateStr = getElementValue(rechnungElement, "VALUTADATUM");
         if (valueDateStr != null && !valueDateStr.isEmpty()) {
             try {

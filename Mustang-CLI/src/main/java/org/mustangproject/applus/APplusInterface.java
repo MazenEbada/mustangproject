@@ -64,7 +64,10 @@ public class APplusInterface {
     }
 
     public static String generateSimpleInvoice(File file, String outputFormat, String tempOutputFile) throws Exception {
-    	ZUGFeRDInvoiceImporter zii = new ZUGFeRDInvoiceImporter(file.getAbsolutePath());
+    	//CUSTOM:AMC/MEB:06.11.2026: Rechenabweichung meldet die Validierung, kein Abbruch beim Einlesen
+    	ZUGFeRDInvoiceImporter zii = new ZUGFeRDInvoiceImporter();
+    	zii.doIgnoreCalculationErrors();
+    	zii.setPDFFilename(file.getAbsolutePath());
 
 		Invoice invoice = null;
 		invoice = zii.extractInvoice();
