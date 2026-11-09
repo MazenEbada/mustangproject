@@ -302,22 +302,15 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
         mustangInvoice.setCurrency(metadata.getCurrency());
         mustangInvoice.setBuyerOrderReferencedDocumentID(metadata.getCustomerOrderNumber());
         
-        // Konvertiere LocalDate zu Date, falls vorhanden.
-        // Das Bestelldatum landet als ram:FormattedIssueDateTime im
-        // BuyerOrderReferencedDocument. In XRechnung ist das Element dort NICHT
-        // zulaessig - CII-DT-027 ("FormattedIssueDateTime should not be present",
-        // EN16931-CII-validation.xslt). In ZUGFeRD EXTENDED ist es erlaubt und
-        // bleibt deshalb erhalten. BT-13 (die Bestellnummer selbst) ist davon
-        // nicht betroffen und wird weiterhin in beiden Profilen gesetzt.
-        // Ohne Bestellnummer auch kein Datum: das Element hat dann keine
-        // ram:IssuerAssignedID, die im Kopf Pflicht ist ("Element
-        // 'ram:IssuerAssignedID' must occur exactly 1 times").
-        String customerOrderNumber = metadata.getCustomerOrderNumber();
-        if (metadata.getOrderDate() != null && !"X".equals(applusEinterface)
-                && customerOrderNumber != null && !customerOrderNumber.trim().isEmpty()) {
-            Date orderDate = Date.from(metadata.getOrderDate().atStartOfDay(ZoneId.systemDefault()).toInstant());
-            mustangInvoice.setBuyerOrderReferencedDocumentIssueDateTime(orderDate);
-        }
+        // Bestelldatum bewusst NICHT setzen - in keinem Profil.
+        // Es landet als ram:FormattedIssueDateTime im BuyerOrderReferencedDocument
+        // und verstoesst dort gegen CII-DT-027 ("FormattedIssueDateTime should not
+        // be present", EN16931-CII-validation.xslt, flag=fatal). Formal erlaubt ist
+        // es nur in ZUGFeRD EXTENDED; Empfaengerportale pruefen EXTENDED-Rechnungen
+        // aber gegen das EN16931-Schematron (die Profil-URN behauptet
+        // "en16931:2017#conformant") und lehnen ab - so geschehen bei Hagelschuer
+        // AR126-05945 (11/2026). Die EN16931 kennt kein Bestelldatum; BT-13 (die
+        // Bestellnummer, ram:IssuerAssignedID) bleibt unveraendert in beiden Profilen.
         
         mustangInvoice.setDocumentCode(mapArtToDocumentCode(metadata.getInvoiceTypePa()));
         mustangInvoice.setDocumentName(metadata.getInvoiceTypePa());
@@ -475,7 +468,10 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
         if ("V".equalsIgnoreCase(type)) {
             String handelsregister = address.getCommercialRegister();
             if (handelsregister != null) {
-                LegalOrganisation lO = new LegalOrganisation(handelsregister, "0002");
+                // BT-30 ohne schemeID: "0002" waere in ISO 6523 das franzoesische
+                // SIRENE-Register. Fuer das deutsche Handelsregister gibt es keinen
+                // ICD-Code - die EN16931 laesst das Schema-Attribut optional.
+                LegalOrganisation lO = new LegalOrganisation(handelsregister);
                 lO.setTradingBusinessName(tradeParty.getName());
                 tradeParty.setLegalOrganisation(lO);
             }
