@@ -90,7 +90,11 @@ public interface IZUGFeRDTradeSettlementPayment extends IZUGFeRDTradeSettlement 
 
 		String xml = "<ram:SpecifiedTradeSettlementPaymentMeans>"
 				+ "<ram:TypeCode>" + XMLTools.encodeXML(getPaymentMeansCode()) + "</ram:TypeCode>";
-		if (!basicProfiles.contains(profile) && getOwnBIC() != null) {
+		// CUSTOM:TEK/MEB:19.11.2026: eigener Text (BT-82) auch ohne BIC; der Standardtext der Bibliothek
+		// bleibt wie bisher an die BIC gebunden (Ausgaben ohne eigenen Text unveraendert).
+		String info = getPaymentMeansInformation();
+		boolean ownInfo = info != null && !info.trim().isEmpty() && !"SEPA credit transfer".equals(info);
+		if (!basicProfiles.contains(profile) && (getOwnBIC() != null || ownInfo)) {
 			xml += "<ram:Information>" + XMLTools.encodeXML(getPaymentMeansInformation()) + "</ram:Information>";
 		}
 		if (getOwnIBAN() != null) {
