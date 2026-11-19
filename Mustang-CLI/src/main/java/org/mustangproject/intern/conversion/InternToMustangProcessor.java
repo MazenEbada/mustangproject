@@ -130,6 +130,11 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
             case "X":
                 einterface = "XRECHNUNG";
                 break;
+            case "E":
+                // ZUGFeRD/Factur-X Profil EN16931 (Comfort), Guideline urn:cen.eu:en16931:2017.
+                // Von Portalen/Grosskunden gefordert (z.B. EUROBAUSTOFF), die EXTENDED nicht lesen.
+                einterface = "EN16931";
+                break;
             default:
                 throw new Exception("ERechnung-Schnittstelle nicht bekannt: " + applusEinterface + "!");
         }
@@ -155,7 +160,18 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
                 interface_ = eInvoiceData.getInterfaceType();
             }
         }
-        return interface_ != null ? interface_ : "Z"; // Default zu ZUGFeRD
+        // trim: der SysConf-Standardeintrag lautet "ZUGFeRD_2.0:Z " (mit Leerzeichen)
+        return interface_ != null && !interface_.trim().isEmpty() ? interface_.trim() : "Z"; // Default zu ZUGFeRD
+    }
+
+    /**
+     * XRechnung (X) und ZUGFeRD EN16931 (E) erlauben nur EINE Zahlungsbedingung
+     * (SpecifiedTradePaymentTerms 0..1). Skonto geht dort als BT-20-Text
+     * "#SKONTO#TAGE=..#PROZENT=..#" statt als eigene Zahlungsbedingung.
+     * Nur EXTENDED (Z) kennt mehrere Zahlungsbedingungen.
+     */
+    private boolean nurEineZahlungsbedingung() {
+        return "X".equals(applusEinterface) || "E".equals(applusEinterface);
     }
 
     /**
@@ -225,9 +241,209 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
             mustangInvoice.addItem(item);
         }
 
+        // Step 8b: verrechnete Anzahlungen/Abschlaege als Vorauszahlung (BT-113) mit Rechnungsbezug (BG-3)
+        addAdvancePayments(mustangInvoice);
+
         // Step 9: Extract Additional Notes
         Map<String, String> textFields = extractTextFields();
         integrateTexts(mustangInvoice, textFields);
+        integrateBuyerAccountingReference(mustangInvoice, textFields);
+
+        // Step 10: Rundungsausgleich bei verrechneten Anzahlungen (BT-114)
+        applyAdvanceRounding(mustangInvoice);
+    }
+
+    /**
+     * CUSTOM:AMC/MEB:17.11.2026:V2.8 - Rundungsausgleich bei Vorauszahlung (BT-114 RoundingAmount).
+     *
+     * <p>Mit verrechneten Anzahlungen rechnet die E-Rechnung die Steuer auf die VOLLE
+     * Basis (BR-CO-17: Basis x Satz), APplus dagegen die Steuer nach Abzug plus die
+     * einzeln gerundete Steuer jeder Anzahlungsrechnung. Das kann je Anzahlung um einen
+     * Cent abweichen (ServiceUnion 17.11.2026: Steuer 25912,41 statt 25912,40). Der
+     * Zahlbetrag muss aber exakt dem APplus-Brutto entsprechen (offener Posten in der
+     * FiBu). Die Differenz geht deshalb in den Rundungsbetrag: DuePayable = GrandTotal -
+     * Prepaid + Rounding (BR-CO-16). Nur bei Vorauszahlung und nur bis 1 Cent je
+     * Anzahlungsposition plus 1 Cent - groessere Abweichungen sind echte Fehler und
+     * bleiben fuer den Betragsvergleich sichtbar.
+     */
+    private void applyAdvanceRounding(Invoice mustangInvoice) {
+        BigDecimal prepaid = mustangInvoice.getTotalPrepaidAmount();
+        if (prepaid == null || prepaid.signum() == 0 || internInvoice.getAmounts() == null
+                || internInvoice.getAmounts().getGrossAmount() == null || internInvoice.getItems() == null) {
+            return;
+        }
+        int anzahl = 0;
+        for (InternInvoiceItem internItem : internInvoice.getItems()) {
+            if (isAdvanceDeduction(internItem)) {
+                anzahl++;
+            }
+        }
+        BigDecimal soll = internInvoice.getAmounts().getGrossAmount().setScale(2, BigDecimal.ROUND_HALF_UP);
+        BigDecimal ist = new org.mustangproject.ZUGFeRD.TransactionCalculator(mustangInvoice).getGrandTotal()
+                .subtract(prepaid.setScale(2, BigDecimal.ROUND_HALF_UP));
+        BigDecimal diff = soll.subtract(ist);
+        BigDecimal grenze = new BigDecimal("0.01").multiply(new BigDecimal(anzahl + 1));
+        if (diff.signum() != 0 && diff.abs().compareTo(grenze) <= 0) {
+            mustangInvoice.setRoundingAmount(diff);
+        }
+    }
+
+    /** PARECHNUNGSART der Gutschriften - dort ist eine URRECHNUNG keine Verrechnung. */
+    private static final java.util.Set<String> GUTSCHRIFT_ARTEN =
+            new java.util.HashSet<>(java.util.Arrays.asList("GU", "SG", "TSG", "AG", "BG"));
+    /** PARECHNUNGSART der Anzahlungs-/Abschlagsrechnungen. */
+    private static final java.util.Set<String> ANZAHLUNG_ARTEN =
+            new java.util.HashSet<>(java.util.Arrays.asList("AN", "AB", "AV"));
+
+    /**
+     * CUSTOM:AMC/MEB:17.11.2026:V2.8 - Ist die Position die Verrechnung einer Anzahlung oder
+     * eines Abschlags?
+     *
+     * <p>APplus legt sie in der Schluss-/Teilschlussrechnung als eigene Position an
+     * (RechnungUtil.fillAnzArtikel): MENGE 1, negativer Betrag, URRECHNUNG = Nummer der
+     * Anzahlungs-/Abschlagsrechnung, URRECHPOS = deren Position. Erkannt wird sie an
+     * <ul>
+     * <li>URRECHNUNG gesetzt (und nicht die eigene Nummer),</li>
+     * <li>negativem Betrag,</li>
+     * <li>der eigene Beleg ist keine Gutschrift,</li>
+     * <li>die Ursprungsrechnung ist eine Anzahlungs-/Abschlagsrechnung (PARECHNUNGSART
+     *     AN/AB/AV, Span-Feld ANP_URPARECHNUNGSART ab V2.8). Liefert ein aelterer Span das
+     *     Feld nicht, reicht ART = 'A' der Position (nur Anzahlungen erkennbar).</li>
+     * </ul>
+     * Gleiche Regel in Anp_ERechnungProcessorUtil (Betragsvergleich) - beide zusammen aendern.
+     */
+    private boolean isAdvanceDeduction(InternInvoiceItem internItem) {
+        if (Boolean.TRUE.equals(internItem.getDontPrint()) || internItem.getReferences() == null) {
+            return false;
+        }
+        InternItemReferences ref = internItem.getReferences();
+        String urRechnung = ref.getOriginalInvoice();
+        if (urRechnung == null || urRechnung.trim().isEmpty()) {
+            return false;
+        }
+        InternInvoiceMetadata metadata = internInvoice.getMetadata();
+        if (metadata != null) {
+            if (urRechnung.trim().equals(metadata.getInvoiceNumber())) {
+                return false;
+            }
+            String art = metadata.getInvoiceTypePa();
+            if (art != null && GUTSCHRIFT_ARTEN.contains(art.trim().toUpperCase())) {
+                return false;
+            }
+        }
+        BigDecimal betrag = advanceNet(internItem);
+        if (betrag == null || betrag.signum() >= 0) {
+            return false;
+        }
+        if (ref.isOriginalInvoiceTypePaKnown()) {
+            String urArt = ref.getOriginalInvoiceTypePa();
+            return urArt != null && ANZAHLUNG_ARTEN.contains(urArt.trim().toUpperCase());
+        }
+        return "A".equalsIgnoreCase(ref.getPositionType() != null ? ref.getPositionType().trim() : null);
+    }
+
+    /** Nettobetrag einer Position: NETTOERLOES, sonst ERLOES, sonst NETTO x MENGE. */
+    private static BigDecimal advanceNet(InternInvoiceItem internItem) {
+        InternItemAmounts amounts = internItem.getAmounts();
+        if (amounts == null) {
+            return null;
+        }
+        if (amounts.getNetRevenue() != null && amounts.getNetRevenue().signum() != 0) {
+            return amounts.getNetRevenue();
+        }
+        if (amounts.getRevenue() != null && amounts.getRevenue().signum() != 0) {
+            return amounts.getRevenue();
+        }
+        if (amounts.getNet() != null) {
+            BigDecimal menge = internItem.getQuantity() != null ? internItem.getQuantity() : BigDecimal.ONE;
+            return amounts.getNet().multiply(menge);
+        }
+        return null;
+    }
+
+    /**
+     * CUSTOM:AMC/MEB:17.11.2026:V2.8 - Verrechnete Anzahlungen/Abschlaege nach der Norm.
+     *
+     * <p>Die Abzugsposition entfaellt (extractInvoiceItems). Stattdessen:
+     * <ul>
+     * <li>BT-113 TotalPrepaidAmount = Summe der verrechneten Bruttobetraege (Netto + Steuer
+     *     der Abzugsposition - die Werte, die APplus aus der Anzahlungsrechnung uebernommen
+     *     hat, nicht neu gerechnet). Mustang rechnet DuePayable = GrandTotal - Prepaid.</li>
+     * <li>BG-3 InvoiceReferencedDocument je Anzahlungs-/Abschlagsrechnung (BT-25 Nummer,
+     *     BT-26 Datum aus ANP_URRECHNUNGDATUM); ein Kopfbezug (Gutschrift) bleibt zuerst.</li>
+     * <li>nur EXTENDED: ram:SpecifiedAdvancePayment je Rechnung und Steuersatz mit Steuer
+     *     und Bezug (das Profil-Gate sitzt im ZUGFeRD2PullProvider).</li>
+     * </ul>
+     * Netto- und Steuersumme der E-Rechnung enthalten damit die volle Leistung; der
+     * Zahlbetrag entspricht dem APplus-Brutto.
+     */
+    private void addAdvancePayments(Invoice mustangInvoice) {
+        List<InternInvoiceItem> internItems = internInvoice.getItems();
+        if (internItems == null) {
+            return;
+        }
+        java.util.Set<String> referenced = new java.util.HashSet<>();
+        if (mustangInvoice.getInvoiceReferencedDocuments() != null) {
+            for (ReferencedDocument doc : mustangInvoice.getInvoiceReferencedDocuments()) {
+                if (doc.getIssuerAssignedID() != null) {
+                    referenced.add(doc.getIssuerAssignedID().trim());
+                }
+            }
+        }
+        BigDecimal prepaid = BigDecimal.ZERO;
+        boolean found = false;
+        Map<String, org.mustangproject.AdvancePayment> payments = new java.util.LinkedHashMap<>();
+        for (InternInvoiceItem internItem : internItems) {
+            if (!isAdvanceDeduction(internItem)) {
+                continue;
+            }
+            found = true;
+            InternItemReferences ref = internItem.getReferences();
+            String urRechnung = ref.getOriginalInvoice().trim();
+            Date urDatum = ref.getOriginalInvoiceDate() != null
+                    ? Date.from(ref.getOriginalInvoiceDate().atStartOfDay(ZoneId.systemDefault()).toInstant())
+                    : null;
+
+            BigDecimal netto = advanceNet(internItem).negate();
+            InternItemTax tax = internItem.getAmounts().getTax();
+            BigDecimal satz = tax != null && tax.getTaxRate() != null ? tax.getTaxRate() : BigDecimal.ZERO;
+            BigDecimal steuer = tax != null && tax.getTaxAmount() != null
+                    ? tax.getTaxAmount().negate()
+                    : netto.multiply(satz).divide(new BigDecimal(100), 2, BigDecimal.ROUND_HALF_UP);
+            BigDecimal brutto = netto.add(steuer);
+            prepaid = prepaid.add(brutto);
+
+            String kategorie = tax != null && tax.getTaxCategory() != null && !tax.getTaxCategory().trim().isEmpty()
+                    ? tax.getTaxCategory().trim().toUpperCase()
+                    : (satz.signum() > 0 ? "S" : "Z");
+            String key = urRechnung + "|" + satz.stripTrailingZeros().toPlainString() + "|" + kategorie;
+            org.mustangproject.AdvancePayment ap = payments.get(key);
+            if (ap == null) {
+                ap = new org.mustangproject.AdvancePayment()
+                        .setPaidAmount(BigDecimal.ZERO).setTaxAmount(BigDecimal.ZERO)
+                        .setTaxPercent(satz).setTaxCategoryCode(kategorie)
+                        .setInvoiceID(urRechnung).setInvoiceDate(urDatum);
+                payments.put(key, ap);
+            }
+            ap.setPaidAmount(ap.getPaidAmount().add(brutto));
+            ap.setTaxAmount(ap.getTaxAmount().add(steuer));
+
+            if (!referenced.contains(urRechnung)) {
+                ReferencedDocument doc = new ReferencedDocument().setIssuerAssignedID(urRechnung);
+                if (urDatum != null) {
+                    doc.setFormattedIssueDateTime(urDatum);
+                }
+                mustangInvoice.addInvoiceReferencedDocument(doc);
+                referenced.add(urRechnung);
+            }
+        }
+        if (!found) {
+            return;
+        }
+        mustangInvoice.setTotalPrepaidAmount(prepaid);
+        for (org.mustangproject.AdvancePayment ap : payments.values()) {
+            mustangInvoice.addAdvancePayment(ap);
+        }
     }
 
     /**
@@ -606,11 +822,11 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
         // Bestimme die Anzahl der Zahlungsbedingungen
         IZUGFeRDPaymentTerms[] mustangPaymentTerms;
         int count = 1;
-        if (!applusEinterface.equals("X") && discountPercent1 != null && discountDays1 != null
+        if (!nurEineZahlungsbedingung() && discountPercent1 != null && discountDays1 != null
                 && !discountPercent1.isEmpty() && !discountDays1.isEmpty()) {
             count++;
         }
-        if (!applusEinterface.equals("X") && discountPercent2 != null && discountDays2 != null
+        if (!nurEineZahlungsbedingung() && discountPercent2 != null && discountDays2 != null
                 && !discountPercent2.isEmpty() && !discountDays2.isEmpty()) {
             count++;
         }
@@ -631,7 +847,7 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
                 //     #SKONTO#TAGE=10#PROZENT=2.00#
                 // BASISBETRAG entfaellt, weil sich das Skonto bei uns immer auf
                 // den faelligen Gesamtbetrag (BT-115) bezieht.
-                if ("X".equals(applusEinterface)) {
+                if (nurEineZahlungsbedingung()) {
                     String skonto = skontoZeile(discountDays1, discountPercent1)
                                   + skontoZeile(discountDays2, discountPercent2);
                     if (!skonto.isEmpty()) {
@@ -667,7 +883,7 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
         });
 
         // Skonto 1, falls vorhanden
-        if (!applusEinterface.equals("X") && discountPercent1 != null && discountDays1 != null
+        if (!nurEineZahlungsbedingung() && discountPercent1 != null && discountDays1 != null
                 && !discountPercent1.isEmpty() && !discountDays1.isEmpty()) {
             mustangPaymentTerms[1] = (new IZUGFeRDPaymentTerms() {
                 @Override
@@ -711,7 +927,7 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
         }
 
         // Skonto 2, falls vorhanden
-        if (!applusEinterface.equals("X") && discountPercent2 != null && discountDays2 != null
+        if (!nurEineZahlungsbedingung() && discountPercent2 != null && discountDays2 != null
                 && !discountPercent2.isEmpty() && !discountDays2.isEmpty()) {
             int arrayCount = 1;
             if (discountPercent1 != null && discountDays1 != null
@@ -787,6 +1003,47 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
         }
         if (isNoteEnabled("FACTORINGTEXT") && textFields.get("FACTORINGTEXT") != null) {
             mustangInvoice.addNotes(Collections.singletonList(IncludedNote.generalNote(textFields.get("FACTORINGTEXT"))));
+        }
+    }
+
+    /**
+     * Uebertraegt einen Belegtext als Kontierungsinformation des Kaeufers
+     * (BT-19, ram:ReceivableSpecifiedTradeAccountingAccount/ram:ID im Kopf).
+     *
+     * <p>Gesteuert ueber den Konvertierungsschluessel <code>ACCOUNTINGREF</code>:
+     * Name des Belegtextes aus {STDTEXT, FUSSTEXT, FREITEXT, IHRTEXT, KOPFTEXT,
+     * FACTORINGTEXT}, in APplus gefuellt aus der SysConf
+     * CUSTOM/E-RECHNUNG/ANP_ERECHNUNG_KONTIERUNG. Fehlt der Schluessel oder ist
+     * der Text leer, entsteht kein BT-19 - Ausgabe unveraendert.
+     *
+     * <p>Der Text ist Klartext aus HTML (udf_plainText3) und kann Zeilenumbrueche
+     * tragen; BT-19 ist eine Kennung, daher wird Whitespace zu einem Leerzeichen
+     * zusammengefasst. Ein evtl. zusaetzlicher Kopf-Hinweis (NOTES) bleibt
+     * davon unberuehrt.
+     *
+     * <p>Anlass: Morath 11.11.2026 - Kostenstelle des Kunden steht in "Ihre
+     * Zeichen" (IHRTEXT).
+     *
+     * @param mustangInvoice Das Mustang-Invoice-Objekt
+     * @param textFields Die Textfelder
+     */
+    private void integrateBuyerAccountingReference(Invoice mustangInvoice, Map<String, String> textFields) {
+        String field = (conversionKeys == null) ? null : conversionKeys.get("ACCOUNTINGREF");
+        if (field == null || field.trim().isEmpty()) {
+            return;
+        }
+        String key = field.trim().toUpperCase();
+        String value = textFields.get(key);
+        if (value == null && "IHRTEXT".equals(key) && internInvoice.getTexts() != null) {
+            // Der Span liefert "Ihre Zeichen" als Spalte IHRTEXT, nicht als HTMLIHRTEXT
+            value = internInvoice.getTexts().getCustomerReference();
+        }
+        if (value == null) {
+            return;
+        }
+        value = value.replaceAll("\\s+", " ").trim();
+        if (!value.isEmpty()) {
+            mustangInvoice.setBuyerAccountingReference(value);
         }
     }
 
@@ -932,6 +1189,11 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
             if (Boolean.TRUE.equals(internItem.getDontPrint())) {
                 continue;
             }
+            // V2.8: verrechnete Anzahlung/Abschlag ist keine Position, sondern
+            // Vorauszahlung (BT-113) - s. addAdvancePayments
+            if (isAdvanceDeduction(internItem)) {
+                continue;
+            }
 
             // Menge und Preis
             BigDecimal quantity = internItem.getQuantity();
@@ -1054,6 +1316,21 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
             // auch wenn sie selbst kein "Preis nicht drucken" traegt.
             boolean zeroPrice = dontPrintPrice || insidePricedHead;
 
+            // CUSTOM:AMC/MEB:17.11.2026:V2.8 - Negativer Einzelpreis ist in der EN16931
+            // verboten (BR-27 "Item net price shall NOT be negative", ebenso BR-28 fuer
+            // den Bruttopreis). Im Profil Comfort/EN16931 (E) wandert das Vorzeichen
+            // einer normalen Abzugsposition deshalb in die Menge: MENGE -1 x Preis +X
+            // ergibt denselben Zeilenbetrag (BT-131 darf negativ sein), Summen und
+            // Steuer bleiben unveraendert. EXTENDED (Z) bleibt wie bisher.
+            // Verrechnete Anzahlungen/Abschlaege kommen hier nicht an - sie gehen als
+            // Vorauszahlung hinaus (addAdvancePayments).
+            boolean negativerPreis = "E".equals(applusEinterface)
+                    && !zeroPrice && unitPrice.signum() < 0 && quantity.signum() != 0;
+            if (negativerPreis) {
+                quantity = quantity.negate();
+                unitPrice = unitPrice.negate();
+            }
+
             // Produktinformationen
             Product product = new Product();
             if (internItem.getText() != null) {
@@ -1122,7 +1399,18 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
             // Kopf mit Preis aus Unterpositionen: ERLOES ist bereits der Endbetrag,
             // Rabatte/Zuschlaege duerfen nicht noch einmal abgehen.
             if (!zeroPrice && headTaxRate == null && quantity.compareTo(BigDecimal.ZERO) != 0) {
-                if (summRabatt.compareTo(BigDecimal.ZERO) > 0) {
+                if (summRabatt.compareTo(BigDecimal.ZERO) > 0 && negativerPreis) {
+                    // V2.8: bei umgedrehtem Vorzeichen (Menge negativ) waere ein Rabatt
+                    // pro Einheit selbst negativ (BR-28). Deshalb als absolute
+                    // Zeilen-Allowance (BG-27): Zeilenbetrag = MENGE x NETTO - Rabatt,
+                    // wie in APplus.
+                    Allowance lineAllowance = new Allowance(summRabatt);
+                    lineAllowance.setReason("Rabatt");
+                    if (!applusEinterface.equals("X"))
+                    		lineAllowance.setReasonCode("95");
+                    lineAllowance.setTaxPercent(product.getVATPercent());
+                    item.addAllowance(lineAllowance);
+                } else if (summRabatt.compareTo(BigDecimal.ZERO) > 0) {
                     // Rabatt auf dieselbe Preisbasis wie der Bruttopreis (basisQty), NICHT
                     // pauschal PACKMENGE: im ANP_MENGEINPREISME-Zweig ist der Preis bereits
                     // auf VKME umgerechnet (basisQty = 1) - mit PACKMENGE war der Rabatt

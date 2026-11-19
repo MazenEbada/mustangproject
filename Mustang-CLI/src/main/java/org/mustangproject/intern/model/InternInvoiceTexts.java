@@ -15,6 +15,8 @@ public class InternInvoiceTexts {
     private String footerText;
     private String headerText;
     private String factoringText;
+    /** CUSTOM:AMC/MEB:13.11.2026 - RECHNUNG.IHRTEXT ("Ihre Zeichen") unveraendert, fuer BT-19. */
+    private String customerReference;
 
     // Getter und Setter
     public String getStandardText() {
@@ -63,5 +65,13 @@ public class InternInvoiceTexts {
 
     public void setFactoringText(String factoringText) {
         this.factoringText = factoringText;
+    }
+
+    public String getCustomerReference() {
+        return customerReference;
+    }
+
+    public void setCustomerReference(String customerReference) {
+        this.customerReference = customerReference;
     }
 }

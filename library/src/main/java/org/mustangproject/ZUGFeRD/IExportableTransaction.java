@@ -680,6 +680,27 @@ public interface IExportableTransaction {
 	}
 
 	/**
+	 * BT-19 Buyer accounting reference (Kontierungsinformation des Kaeufers)
+	 * /rsm:CrossIndustryInvoice/rsm:SupplyChainTradeTransaction/
+	 *   ram:ApplicableHeaderTradeSettlement/ram:ReceivableSpecifiedTradeAccountingAccount/ram:ID
+	 * CUSTOM:AMC/MEB:13.11.2026 - Upstream kennt BT-19 nur auf Positionsebene (BT-133).
+	 *
+	 * @return the buyer accounting reference, null if none
+	 */
+	default String getBuyerAccountingReference() {
+		return null;
+	}
+
+	/**
+	 * CUSTOM:AMC/MEB:17.11.2026 - geleistete Anzahlungen (nur EXTENDED: ram:SpecifiedAdvancePayment)
+	 *
+	 * @return list of advance payments, null if none
+	 */
+	default java.util.List<org.mustangproject.AdvancePayment> getAdvancePayments() {
+		return null;
+	}
+
+	/**
 	 * BT-23 Business process identifier
 	 * /rsm:CrossIndustryInvoice/rsm:ExchangedDocumentContext/
 	 *   ram:BusinessProcessSpecifiedDocumentContextParameter/ram:ID

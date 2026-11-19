@@ -475,6 +475,9 @@ public class XMLInvoiceWorkerImpl implements XMLInvoiceWorker {
         texts.setStandardText(getElementValue(stdtxtElement, "HTMLSTDTXT"));
         texts.setFreeText(getElementValue(rechnungElement, "HTMLFREITEXT"));
         texts.setCustomerText(getElementValue(rechnungElement, "HTMLIHRTEXT"));
+        // CUSTOM:AMC/MEB:13.11.2026 - "Ihre Zeichen" kommt ueber rechnung.* als IHRTEXT
+        // (HTMLIHRTEXT liefert der Span nicht). Nur fuer BT-19 (ACCOUNTINGREF) genutzt.
+        texts.setCustomerReference(getElementValue(rechnungElement, "IHRTEXT"));
         texts.setFooterText(getElementValue(rechnungElement, "HTMLFUSSTEXT"));
         texts.setHeaderText(getElementValue(rechnungElement, "HTMLKOPFTEXT"));
     }
@@ -1098,7 +1101,26 @@ public class XMLInvoiceWorkerImpl implements XMLInvoiceWorker {
      */
     private void extractItemReferences(Element element, InternItemReferences references) {
         references.setOriginalInvoice(getElementValue(element, "URRECHNUNG"));
-        references.setOriginalInvoicePosition(getElementValue(element, "URRECHNUNGPOS"));
+        // CUSTOM:AMC/MEB:17.11.2026:V2.8 - die Spalte heisst in RECHNUNGPOS URRECHPOS
+        // (URRECHNUNGPOS gibt es nicht); alter Name bleibt als Rueckfall.
+        String urRechPos = getElementValue(element, "URRECHPOS");
+        references.setOriginalInvoicePosition(urRechPos != null && !urRechPos.isEmpty()
+                ? urRechPos : getElementValue(element, "URRECHNUNGPOS"));
+        // Anzahlung/Abschlag erkennen: PARECHNUNGSART der Ursprungsrechnung (Span ab V2.8;
+        // das Element ist auch bei NULL als xsi:nil vorhanden) und ART der Position
+        references.setOriginalInvoiceTypePaKnown(
+                element.getElementsByTagName("ANP_URPARECHNUNGSART").getLength() > 0);
+        references.setOriginalInvoiceTypePa(getElementValue(element, "ANP_URPARECHNUNGSART"));
+        references.setPositionType(getElementValue(element, "ART"));
+        // Datum der Ursprungs-/Anzahlungsrechnung (BT-26), nur mit Span ab V2.8
+        String urRechDatum = getElementValue(element, "ANP_URRECHNUNGDATUM");
+        if (urRechDatum != null && urRechDatum.length() >= 10) {
+            try {
+                references.setOriginalInvoiceDate(LocalDate.parse(urRechDatum.substring(0, 10), DATE_FORMATTER));
+            } catch (DateTimeParseException e) {
+                // ohne Datum weiter - BT-26 ist optional
+            }
+        }
         references.setOrder(getElementValue(element, "AUFTRAG"));
         references.setOrderPosition(getElementValue(element, "AUFTRAGPOS"));
         references.setDeliveryNote(getElementValue(element, "LIEFERSCHEIN"));

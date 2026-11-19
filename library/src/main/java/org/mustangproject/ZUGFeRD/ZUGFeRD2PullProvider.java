@@ -1164,6 +1164,46 @@ public class ZUGFeRD2PullProvider implements IXMLProvider {
 				}
 			}
 		}
+		// CUSTOM:AMC/MEB:13.11.2026 - BT-19 Kontierungsinformation des Kaeufers.
+		// Laut CII-Schema nach InvoiceReferencedDocument, ab Profil BASIC WL.
+		if (trans.getBuyerAccountingReference() != null && !trans.getBuyerAccountingReference().trim().isEmpty()
+			&& getProfile() != Profiles.getByName("Minimum")) {
+			xml.append("<ram:ReceivableSpecifiedTradeAccountingAccount>"
+				+ "<ram:ID>" + XMLTools.encodeXML(trans.getBuyerAccountingReference().trim()) + "</ram:ID>"
+				+ "</ram:ReceivableSpecifiedTradeAccountingAccount>");
+		}
+		// CUSTOM:AMC/MEB:17.11.2026 - geleistete Anzahlungen, nur EXTENDED (AdvancePaymentType),
+		// laut Schema direkt nach ReceivableSpecifiedTradeAccountingAccount.
+		if (trans.getAdvancePayments() != null && getProfile() == Profiles.getByName("Extended")) {
+			for (org.mustangproject.AdvancePayment ap : trans.getAdvancePayments()) {
+				if (ap.getPaidAmount() == null) {
+					continue;
+				}
+				xml.append("<ram:SpecifiedAdvancePayment>"
+					+ "<ram:PaidAmount>" + currencyFormat(ap.getPaidAmount()) + "</ram:PaidAmount>"
+					+ "<ram:IncludedTradeTax>");
+				if (ap.getTaxAmount() != null) {
+					xml.append("<ram:CalculatedAmount>" + currencyFormat(ap.getTaxAmount()) + "</ram:CalculatedAmount>");
+				}
+				xml.append("<ram:TypeCode>VAT</ram:TypeCode>"
+					+ "<ram:CategoryCode>" + XMLTools.encodeXML(ap.getTaxCategoryCode() != null ? ap.getTaxCategoryCode() : "S") + "</ram:CategoryCode>");
+				if (ap.getTaxPercent() != null) {
+					xml.append("<ram:RateApplicablePercent>" + vatFormat(ap.getTaxPercent()) + "</ram:RateApplicablePercent>");
+				}
+				xml.append("</ram:IncludedTradeTax>");
+				if (ap.getInvoiceID() != null && !ap.getInvoiceID().trim().isEmpty()) {
+					xml.append("<ram:InvoiceSpecifiedReferencedDocument>"
+						+ "<ram:IssuerAssignedID>" + XMLTools.encodeXML(ap.getInvoiceID().trim()) + "</ram:IssuerAssignedID>");
+					if (ap.getInvoiceDate() != null) {
+						xml.append("<ram:FormattedIssueDateTime><qdt:DateTimeString format=\"102\">"
+							+ new java.text.SimpleDateFormat("yyyyMMdd").format(ap.getInvoiceDate())
+							+ "</qdt:DateTimeString></ram:FormattedIssueDateTime>");
+					}
+					xml.append("</ram:InvoiceSpecifiedReferencedDocument>");
+				}
+				xml.append("</ram:SpecifiedAdvancePayment>");
+			}
+		}
 
 		xml.append("</ram:ApplicableHeaderTradeSettlement>");
 		// + "<IncludedSupplyChainTradeLineItem>"

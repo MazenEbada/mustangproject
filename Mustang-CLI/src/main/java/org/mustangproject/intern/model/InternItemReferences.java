@@ -32,6 +32,49 @@ public class InternItemReferences {
         this.originalInvoicePosition = originalInvoicePosition;
     }
 
+    // CUSTOM:AMC/MEB:17.11.2026:V2.8 - Datum der Ursprungs-/Anzahlungsrechnung (BT-26), Span-Feld ANP_URRECHNUNGDATUM
+    private java.time.LocalDate originalInvoiceDate;
+
+    public java.time.LocalDate getOriginalInvoiceDate() {
+        return originalInvoiceDate;
+    }
+
+    public void setOriginalInvoiceDate(java.time.LocalDate originalInvoiceDate) {
+        this.originalInvoiceDate = originalInvoiceDate;
+    }
+
+    // CUSTOM:AMC/MEB:17.11.2026:V2.8 - PARECHNUNGSART der Ursprungsrechnung (Span-Feld
+    // ANP_URPARECHNUNGSART: AN/AB/AV = Anzahlung/Abschlag) und ART der Position
+    // (A = Anzahlung) - erkennen die Verrechnung einer Anzahlung/eines Abschlags
+    private String originalInvoiceTypePa;
+    private String positionType;
+    private boolean originalInvoiceTypePaKnown;
+
+    public String getOriginalInvoiceTypePa() {
+        return originalInvoiceTypePa;
+    }
+
+    public void setOriginalInvoiceTypePa(String originalInvoiceTypePa) {
+        this.originalInvoiceTypePa = originalInvoiceTypePa;
+    }
+
+    /** true, wenn der Span das Feld ANP_URPARECHNUNGSART liefert (ab V2.8). */
+    public boolean isOriginalInvoiceTypePaKnown() {
+        return originalInvoiceTypePaKnown;
+    }
+
+    public void setOriginalInvoiceTypePaKnown(boolean known) {
+        this.originalInvoiceTypePaKnown = known;
+    }
+
+    public String getPositionType() {
+        return positionType;
+    }
+
+    public void setPositionType(String positionType) {
+        this.positionType = positionType;
+    }
+
     public String getOrder() {
         return order;
     }

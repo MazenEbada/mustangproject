@@ -681,6 +681,30 @@ public class Main {
 		}
 	}
 
+	/**
+	 * AMC: ermittelt das ZUGFeRD-2/Factur-X-Profil aus der Guideline-ID
+	 * (ram:GuidelineSpecifiedDocumentContextParameter/ram:ID) des CII-XML.
+	 *
+	 * @return das passende Profil oder null, wenn keine/unbekannte Guideline
+	 */
+	static Profile profileFromGuideline(byte[] xml) {
+		String text = new String(xml, StandardCharsets.UTF_8);
+		java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+				"GuidelineSpecifiedDocumentContextParameter>\\s*<(?:\\w+:)?ID>\\s*([^<\\s]+)\\s*</").matcher(text);
+		if (!m.find()) {
+			return null;
+		}
+		String guideline = m.group(1);
+		for (String name : new String[] { "MINIMUM", "BASICWL", "BASIC", "EN16931", "EXTENDED", "XRECHNUNG",
+				"EXTENDED-CTC-FR" }) {
+			Profile p = Profiles.getByName(name, 2);
+			if (guideline.equals(p.getID())) {
+				return p;
+			}
+		}
+		return null;
+	}
+
 	private static void performCombine(String pdfName, String xmlName, String outName, String format, String zfVersion,
 			String zfProfile, boolean ignoreInputErrors, String[] attachmentFilenames,
 			ArrayList<FileAttachment> attachments, boolean noAttachments) throws Exception {
@@ -850,6 +874,17 @@ public class Main {
 				ze = new ZUGFeRDExporterFromPDFA();
 				if (ignoreInputErrors) {
 					((ZUGFeRDExporterFromPDFA) ze).ignorePDFAErrors();
+				}
+			}
+
+			// AMC: Profil der PDF-Metadaten (XMP ConformanceLevel) aus der Guideline-ID des
+			// eingebetteten XML ableiten. Der APplus-Wrapper uebergibt fest "--profile T"
+			// (EXTENDED); ein EN16931- oder XRechnung-XML bekaeme sonst falsche Metadaten.
+			if (format.equals("fx") || format.equals("zf") && zfIntVersion == 2) {
+				Profile ausXml = profileFromGuideline(Files.readAllBytes(Paths.get(xmlName)));
+				if (ausXml != null && ausXml != zfConformanceLevelProfile) {
+					System.out.println("Profile taken from XML guideline: " + ausXml.getName());
+					zfConformanceLevelProfile = ausXml;
 				}
 			}
 

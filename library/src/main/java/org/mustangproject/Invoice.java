@@ -67,6 +67,8 @@ public class Invoice implements IExportableTransaction {
 	protected ArrayList<FileAttachment> xmlEmbeddedFiles;
 
 	protected BigDecimal totalPrepaidAmount;
+	// CUSTOM:AMC/MEB:17.11.2026 - geleistete Anzahlungen (EXTENDED: SpecifiedAdvancePayment)
+	protected List<AdvancePayment> advancePayments;
 	protected Date detailedDeliveryDateStart;
 	protected Date detailedDeliveryPeriodEnd;
 	protected IReferencedDocument tenderReference; // TypeCode 50
@@ -86,6 +88,7 @@ public class Invoice implements IExportableTransaction {
 	protected ReferencedDocument deliveryNoteReferencedDocument;
 	protected String vatDueDateTypeCode;
 	protected String creditorReferenceID; // required when direct debit is used.
+	protected String buyerAccountingReference; // BT-19, CUSTOM:AMC/MEB:13.11.2026
 
 	private List<IncludedNote> includedNotes;
 	private BigDecimal roundingAmount;
@@ -1453,6 +1456,31 @@ public class Invoice implements IExportableTransaction {
 
 	public Invoice setCreditorReferenceID(String creditorReferenceID) {
 		this.creditorReferenceID = creditorReferenceID;
+		return this;
+	}
+
+	// CUSTOM:AMC/MEB:13.11.2026 - BT-19 Kontierungsinformation des Kaeufers (Kopfebene)
+	@Override
+	public String getBuyerAccountingReference() {
+		return buyerAccountingReference;
+	}
+
+	public Invoice setBuyerAccountingReference(String buyerAccountingReference) {
+		this.buyerAccountingReference = buyerAccountingReference;
+		return this;
+	}
+
+	// CUSTOM:AMC/MEB:17.11.2026 - geleistete Anzahlungen (EXTENDED: SpecifiedAdvancePayment)
+	@Override
+	public List<AdvancePayment> getAdvancePayments() {
+		return advancePayments;
+	}
+
+	public Invoice addAdvancePayment(AdvancePayment payment) {
+		if (advancePayments == null) {
+			advancePayments = new ArrayList<>();
+		}
+		advancePayments.add(payment);
 		return this;
 	}
 
