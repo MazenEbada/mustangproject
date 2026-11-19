@@ -15,6 +15,19 @@ import org.mustangproject.intern.export.InvoiceExporterFactory;
  * Hauptklasse für eine Rechnung
  */
 public class InternInvoice {
+    // CUSTOM:TEK/MEB:19.11.2026: optionaler Erweiterungsabschnitt der Cloud-Variante
+    // (<zusatz> bzw. <zusatz>/<zeile pos="n">). Fehlt er, aendert sich nichts.
+    private org.w3c.dom.Element extension;
+
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public org.w3c.dom.Element getExtension() {
+        return extension;
+    }
+
+    public void setExtension(org.w3c.dom.Element extension) {
+        this.extension = extension;
+    }
+
     // Adressdaten
     private InternAddress sellerAddress;
     private InternAddress customerAddress;

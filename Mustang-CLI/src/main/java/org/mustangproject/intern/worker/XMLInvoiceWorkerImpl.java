@@ -84,8 +84,19 @@ public class XMLInvoiceWorkerImpl implements XMLInvoiceWorker {
             // Extrahieren und Setzen der Texte
             extractTexts(doc, rechnungElement, invoice);
             
+            // CUSTOM:TEK/MEB:19.11.2026: Erweiterungsabschnitt der Cloud-Variante (optional)
+            Element zusatz = null;
+            for (Node n = doc.getDocumentElement().getFirstChild(); n != null; n = n.getNextSibling()) {
+                if (n.getNodeType() == Node.ELEMENT_NODE && "zusatz".equals(n.getNodeName())) {
+                    zusatz = (Element) n;
+                    break;
+                }
+            }
+            invoice.setExtension(zusatz);
+
             // Extrahieren und Setzen der Zahlungsbedingungen
             extractPaymentTerms(doc, rechnungElement, invoice, conversionKeys.get("ZBDETAILS"));
+            applyExtensionDiscounts(zusatz, invoice);
             
             // Extrahieren und Setzen der E-Rechnungsdaten
             extractEInvoiceData(rechnungElement, invoice);
@@ -599,6 +610,37 @@ public class XMLInvoiceWorkerImpl implements XMLInvoiceWorker {
     }
     
     /**
+     * CUSTOM:TEK/MEB:19.11.2026: Skontostufen aus dem Erweiterungsabschnitt
+     * (<zusatz>/<skonto><TAGE/><PROZENT/></skonto>, max. 2) - gleiche Schluessel wie
+     * ---ZBDETAILS. Ein per Parameter uebergebenes ZBDETAILS hat Vorrang.
+     */
+    private void applyExtensionDiscounts(Element zusatz, InternInvoice invoice) {
+        if (zusatz == null) {
+            return;
+        }
+        InternPaymentTerms paymentTerms = invoice.getPaymentTerms();
+        if (paymentTerms.getAdditionalData().get("PROZENTSKONTO1") != null) {
+            return;
+        }
+        int stufe = 0;
+        for (Node n = zusatz.getFirstChild(); n != null && stufe < 2; n = n.getNextSibling()) {
+            if (n.getNodeType() != Node.ELEMENT_NODE || !"skonto".equals(n.getNodeName())) {
+                continue;
+            }
+            stufe++;
+            Element sk = (Element) n;
+            String tage = getElementValue(sk, "TAGE");
+            String prozent = getElementValue(sk, "PROZENT");
+            if (tage != null) {
+                paymentTerms.addAdditionalData("SKONTOTAGE" + stufe, tage);
+            }
+            if (prozent != null) {
+                paymentTerms.addAdditionalData("PROZENTSKONTO" + stufe, prozent);
+            }
+        }
+    }
+
+    /**
      * Extrahiert die E-Rechnungsdaten aus dem XML und setzt sie im Invoice-Objekt
      */
     private void extractEInvoiceData(Element rechnungElement, InternInvoice invoice) {
@@ -786,7 +828,18 @@ public class XMLInvoiceWorkerImpl implements XMLInvoiceWorker {
         
         // Schritt 2: Extrahiere die Hauptpositionen
         NodeList positions = doc.getElementsByTagName("rechnungpos");
-        
+
+        // CUSTOM:TEK/MEB:19.11.2026: Positions-Erweiterungen <zusatz>/<zeile pos="n">
+        // (n = laufende Nummer der rechnungpos, ab 1)
+        Map<String, Element> zeilen = new HashMap<>();
+        if (invoice.getExtension() != null) {
+            for (Node n = invoice.getExtension().getFirstChild(); n != null; n = n.getNextSibling()) {
+                if (n.getNodeType() == Node.ELEMENT_NODE && "zeile".equals(n.getNodeName())) {
+                    zeilen.put(((Element) n).getAttribute("pos").trim(), (Element) n);
+                }
+            }
+        }
+
         for (int i = 0; i < positions.getLength(); i++) {
             Node position = positions.item(i);
             
@@ -819,6 +872,8 @@ public class XMLInvoiceWorkerImpl implements XMLInvoiceWorker {
                     item.setSubItems(subItemsMap.get(dbPos));
                 }
                 
+                item.setExtension(zeilen.get(String.valueOf(i + 1)));
+
                 // Position zur Rechnung hinzufügen
                 invoice.addItem(item);
             }

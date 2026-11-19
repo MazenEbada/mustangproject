@@ -735,14 +735,24 @@ public class ZUGFeRD2PullProvider implements IXMLProvider {
 		// Additional Documents of XRechnung (Rechnungsbegruendende Unterlagen - BG-24 XRechnung)
 		if (trans.getAdditionalReferencedDocuments() != null) {
 			for (final FileAttachment f : trans.getAdditionalReferencedDocuments()) {
-				final String documentContent = Base64.getEncoder().encodeToString(f.getData());
+				// CUSTOM:TEK/MEB:19.11.2026: BG-24 vollstaendig - eigene Kennung (BT-122), externer
+				// Verweis (BT-124, URIID) oder Inhalt (BT-125); alle Werte XML-kodiert.
+				final String docId = f.getId() != null && !f.getId().trim().isEmpty() ? f.getId() : f.getFilename();
 				xml.append("<ram:AdditionalReferencedDocument>"
-					+ "<ram:IssuerAssignedID>" + f.getFilename() + "</ram:IssuerAssignedID>"
-					+ "<ram:TypeCode>916</ram:TypeCode>"
-					+ "<ram:Name>" + f.getDescription() + "</ram:Name>"
-					+ "<ram:AttachmentBinaryObject mimeCode=\"" + f.getMimetype() + "\""
-					+ " filename=\"" + f.getFilename() + "\">" + documentContent + "</ram:AttachmentBinaryObject>"
-					+ "</ram:AdditionalReferencedDocument>");
+					+ "<ram:IssuerAssignedID>" + XMLTools.encodeXML(docId) + "</ram:IssuerAssignedID>");
+				if (f.getUri() != null && !f.getUri().trim().isEmpty()) {
+					xml.append("<ram:URIID>" + XMLTools.encodeXML(f.getUri().trim()) + "</ram:URIID>");
+				}
+				xml.append("<ram:TypeCode>916</ram:TypeCode>");
+				if (f.getDescription() != null && !f.getDescription().trim().isEmpty()) {
+					xml.append("<ram:Name>" + XMLTools.encodeXML(f.getDescription()) + "</ram:Name>");
+				}
+				if (f.getData() != null) {
+					final String documentContent = Base64.getEncoder().encodeToString(f.getData());
+					xml.append("<ram:AttachmentBinaryObject mimeCode=\"" + XMLTools.encodeXML(f.getMimetype()) + "\""
+						+ " filename=\"" + XMLTools.encodeXML(f.getFilename()) + "\">" + documentContent + "</ram:AttachmentBinaryObject>");
+				}
+				xml.append("</ram:AdditionalReferencedDocument>");
 			}
 		}
 		if (trans.getObjectIdentifierReferencedDocument() != null && !trans.getObjectIdentifierReferencedDocument().getAsCII().isEmpty()) {

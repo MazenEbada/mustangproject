@@ -12,6 +12,9 @@ public class FileAttachment {
 	protected String relation = "Unspecified";
 	protected String description = "Additional file attachment";
 	protected byte[] data;
+	// CUSTOM:TEK/MEB:19.11.2026: Kennung (BT-122) und externer Verweis (BT-124) fuer BG-24
+	protected String id;
+	protected String uri;
 
 
 	/***
@@ -40,6 +43,24 @@ public class FileAttachment {
 		this.filename = filename;
 		this.mimetype = mimetype;
 		this.data = data;
+	}
+
+	public String getId() {
+		return id;
+	}
+
+	public FileAttachment setId(String id) {
+		this.id = id;
+		return this;
+	}
+
+	public String getUri() {
+		return uri;
+	}
+
+	public FileAttachment setUri(String uri) {
+		this.uri = uri;
+		return this;
 	}
 
 	public String getDescription() {

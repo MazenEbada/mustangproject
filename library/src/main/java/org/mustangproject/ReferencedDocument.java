@@ -220,7 +220,7 @@ public class ReferencedDocument implements IReferencedDocument {
 			xml.append("<ram:IssuerAssignedID>" + XMLTools.encodeXML(this.getIssuerAssignedID()) + "</ram:IssuerAssignedID>" );
 		}
 		if (StringUtils.isNotBlank(this.getUriID())) {
-			xml.append("<ram:URIID>" + XMLTools.encodeXML(this.getLineID()) + "</ram:URIID>" );
+			xml.append("<ram:URIID>" + XMLTools.encodeXML(this.getUriID()) + "</ram:URIID>" ); // CUSTOM:TEK/MEB:19.11.2026: war getLineID()
 		}
 		if (StringUtils.isNotBlank(this.getLineID())) {
 			xml.append("<ram:LineID>" + XMLTools.encodeXML(this.getLineID()) + "</ram:LineID>" );
@@ -229,7 +229,7 @@ public class ReferencedDocument implements IReferencedDocument {
 			xml.append("<ram:TypeCode>" + XMLTools.encodeXML(this.getTypeCode()) + "</ram:TypeCode>");
 		}
 		if (StringUtils.isNotBlank(this.getName())) {
-			xml.append("<ram:name>" + XMLTools.encodeXML(this.getName()) + "</ram:Name>");
+			xml.append("<ram:Name>" + XMLTools.encodeXML(this.getName()) + "</ram:Name>"); // CUSTOM:TEK/MEB:19.11.2026: war <ram:name>
 		}
 		if (this.getAttachmentBinaryObject() != null) {
 			FileAttachment f = this.getAttachmentBinaryObject();

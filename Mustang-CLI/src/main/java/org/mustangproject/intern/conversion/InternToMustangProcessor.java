@@ -282,6 +282,9 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
 
         // Step 10: Rundungsausgleich bei verrechneten Anzahlungen (BT-114)
         applyAdvanceRounding(mustangInvoice);
+
+        // Step 11 (CUSTOM:TEK/MEB:19.11.2026): Erweiterungsabschnitt der Cloud-Variante (optional)
+        CloudExtension.applyHead(mustangInvoice, internInvoice.getExtension(), applusEinterface, language);
     }
 
     /**
@@ -1499,6 +1502,13 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
             item.setBuyerOrderReferencedDocument(
                 new ReferencedDocument().setLineID(internItem.getReferences().getOrderPosition()));
             
+            // CUSTOM:TEK/MEB:19.11.2026: Positions-Erweiterung der Cloud-Variante (optional)
+            try {
+                CloudExtension.applyLine(item, product, internItem.getExtension(), applusEinterface);
+            } catch (Exception e) {
+                throw new RuntimeException("Erweiterung Position " + lineId + ": " + e.getMessage(), e);
+            }
+
             // Position zur Liste hinzufügen
             items.add(item);
         }
