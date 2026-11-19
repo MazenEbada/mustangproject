@@ -135,6 +135,22 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
                 // Von Portalen/Grosskunden gefordert (z.B. EUROBAUSTOFF), die EXTENDED nicht lesen.
                 einterface = "EN16931";
                 break;
+            // CUSTOM:TEK/MEB:19.11.2026: weitere Profile fuer die Cloud-Variante.
+            // B = BASIC, W = BASIC WL, M = MINIMUM (W und M ohne Positionen: in DE keine
+            // E-Rechnung nach Par. 14 UStG, nur Buchungshilfe). P = PEPPOL BIS Billing 3.0:
+            // erst EN16931 (CII), danach CII -> UBL mit den PEPPOL-Kennungen.
+            case "B":
+                einterface = "BASIC";
+                break;
+            case "W":
+                einterface = "BASICWL";
+                break;
+            case "M":
+                einterface = "MINIMUM";
+                break;
+            case "P":
+                einterface = "EN16931";
+                break;
             default:
                 throw new Exception("ERechnung-Schnittstelle nicht bekannt: " + applusEinterface + "!");
         }
@@ -143,6 +159,12 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
         provider.setProfile(Profiles.getByName(einterface)); // Set ZUGFeRD profile
         provider.generateXML(mustangInvoice);
         invoiceXML = new String(provider.getXML(), StandardCharsets.UTF_8);
+        if ("P".equals(applusEinterface)) {
+            invoiceXML = PeppolUBL.fromCII(invoiceXML);
+        }
+        if ("B".equals(applusEinterface) || "W".equals(applusEinterface) || "M".equals(applusEinterface)) {
+            invoiceXML = ProfileReducer.reduce(invoiceXML, einterface);
+        }
     }
 
     /**
@@ -171,7 +193,16 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
      * Nur EXTENDED (Z) kennt mehrere Zahlungsbedingungen.
      */
     private boolean nurEineZahlungsbedingung() {
-        return "X".equals(applusEinterface) || "E".equals(applusEinterface);
+        return "X".equals(applusEinterface) || enProfil();
+    }
+
+    /**
+     * EN16931 (E) und die Profile, die dieselben Regeln haben (CUSTOM:TEK/MEB:19.11.2026):
+     * PEPPOL (P, aus EN16931 erzeugt), BASIC (B), BASIC WL (W), MINIMUM (M).
+     */
+    private boolean enProfil() {
+        return "E".equals(applusEinterface) || "P".equals(applusEinterface) || "B".equals(applusEinterface)
+                || "W".equals(applusEinterface) || "M".equals(applusEinterface);
     }
 
     /**
@@ -635,7 +666,15 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
         tradeParty.setZIP(address.getPostalCode());
         tradeParty.setLocation(address.getCity());
         tradeParty.setCountry(address.getCountryIso());
-        tradeParty.setEmail(address.getEmail());
+        // CUSTOM:TEK/MEB:19.11.2026: elektronische Adresse BT-34/BT-49 mit Schema (PEPPOL-ID,
+        // z.B. 0204 Leitweg-ID, 9930 USt-IdNr, 0088 GLN) aus ANP_ENDPOINTID/ANP_ENDPOINTSCHEME.
+        // Ohne das Element bleibt es wie bisher die E-Mail (Schema EM).
+        if (address.getEndpointId() != null && !address.getEndpointId().isEmpty()) {
+            String scheme = address.getEndpointScheme();
+            tradeParty.setEmail(scheme == null || scheme.isEmpty() ? "EM" : scheme, address.getEndpointId());
+        } else {
+            tradeParty.setEmail(address.getEmail());
+        }
 
         // Setze Steuerdaten
         // Nur beim Verkaeufer (Typ "V") darf neben der USt-IdNr. (BT-31,
@@ -1324,7 +1363,7 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
             // Steuer bleiben unveraendert. EXTENDED (Z) bleibt wie bisher.
             // Verrechnete Anzahlungen/Abschlaege kommen hier nicht an - sie gehen als
             // Vorauszahlung hinaus (addAdvancePayments).
-            boolean negativerPreis = "E".equals(applusEinterface)
+            boolean negativerPreis = enProfil()
                     && !zeroPrice && unitPrice.signum() < 0 && quantity.signum() != 0;
             if (negativerPreis) {
                 quantity = quantity.negate();

@@ -5,6 +5,8 @@
  */
 package org.mustangproject.intern.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 /**
  * Adressklasse für Lieferanten, Kunden und Lieferadressen
  */
@@ -14,6 +16,11 @@ public class InternAddress {
      *  ist eine global vergebene Nummer mit Schema 0088, diese hier ist eine
      *  hausinterne Nummer ohne Schema. */
     private String partyId;
+    /** CUSTOM:TEK/MEB:19.11.2026: elektronische Adresse BT-34/BT-49 (z.B. PEPPOL-ID) und ihr
+     *  Schema (0204, 9930, 0088, EM ...). Nur Ausgang; im JSON-Export bewusst nicht enthalten,
+     *  damit der Eingang (E-EK) unveraendert bleibt. */
+    private String endpointId;
+    private String endpointScheme;
     private String glnId;
     private String duns;
 
@@ -53,6 +60,24 @@ public class InternAddress {
 		this.duns = duns;
 	}
 	
+    @JsonIgnore
+    public String getEndpointId() {
+        return endpointId;
+    }
+
+    public void setEndpointId(String endpointId) {
+        this.endpointId = endpointId;
+    }
+
+    @JsonIgnore
+    public String getEndpointScheme() {
+        return endpointScheme;
+    }
+
+    public void setEndpointScheme(String endpointScheme) {
+        this.endpointScheme = endpointScheme;
+    }
+
     public String getPartyId() {
         return partyId;
     }

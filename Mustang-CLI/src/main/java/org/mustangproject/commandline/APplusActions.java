@@ -14,6 +14,8 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.mustangproject.applus.APplusInterface;
+import org.mustangproject.ZUGFeRD.Profiles;
+import org.mustangproject.ZUGFeRD.ZUGFeRDExporterFromA1;
 import org.mustangproject.validator.ZUGFeRDValidator;
 public class APplusActions {
 
@@ -114,6 +116,13 @@ public class APplusActions {
 	            break;
 	        }
 	    }
+	    // CUSTOM:TEK/MEB:19.11.2026: --peppol prueft PEPPOL-UBL zusaetzlich gegen die OpenPEPPOL-Regeln
+	    for (String arg : args) {
+	        if (arg.equalsIgnoreCase("--peppol")) {
+	            validator.enablePeppolRules();
+	            break;
+	        }
+	    }
 
 	    // Kein System.exit bei ungueltiger Rechnung - der Bericht IST das Ergebnis.
 	    return validator.validate(inputFile.getAbsolutePath());
@@ -151,5 +160,68 @@ public class APplusActions {
 	    return result;
 	}
 
-}
+	/**
+	 * CUSTOM:TEK/MEB:19.11.2026: Haengt eine ZUGFeRD-XML an eine bestehende PDF und hebt sie auf
+	 * PDF/A-3 an - wie Mogler/src/AmcZugferdCombine.java, aber mit einstellbarem Producer/Creator
+	 * (fuer die Cloud-Variante). Der Seiteninhalt wird nicht angefasst; die anschliessende
+	 * Validierung gehoert dazu (PDF/A nur, wenn die Schriften schon eingebettet sind).
+	 *
+	 * --input-pdf, --input-xml, --target-pdf, optional --producer, --creator.
+	 * @return Profilname, das in die PDF geschrieben wurde
+	 */
+	public static String handleCombine(String[] args) throws Exception {
+	    String pdf = getArgValue(args, "--input-pdf");
+	    String xml = getArgValue(args, "--input-xml");
+	    String target = getArgValue(args, "--target-pdf");
+	    if (pdf == null || xml == null || target == null) {
+	        System.err.println("Error: --input-pdf, --input-xml and --target-pdf are required for 'COMBINE'.");
+	        System.exit(1);
+	    }
+	    String producer = getArgValue(args, "--producer");
+	    String creator = getArgValue(args, "--creator");
+	    byte[] xmlBytes = java.nio.file.Files.readAllBytes(new File(xml).toPath());
+	    String profileName = combineProfile(new String(xmlBytes, java.nio.charset.StandardCharsets.UTF_8));
+	    File out = new File(target);
+	    if (out.exists() && !out.delete()) {
+	        throw new IllegalStateException("Zieldatei laesst sich nicht ueberschreiben: " + target);
+	    }
+	    ZUGFeRDExporterFromA1 exporter = new ZUGFeRDExporterFromA1();
+	    exporter.ignorePDFAErrors();
+	    exporter.load(new File(pdf).getAbsolutePath());
+	    exporter.setProducer(producer == null ? "E-Rechnung" : producer)
+	            .setCreator(creator == null ? "E-Rechnung" : creator)
+	            .setZUGFeRDVersion(2)
+	            .setProfile(Profiles.getByName(profileName, 2));
+	    exporter.setXML(xmlBytes);
+	    exporter.export(out.getAbsolutePath());
+	    exporter.close();
+	    return profileName;
+	}
 
+	/** Profil aus der Guideline-ID (ram:GuidelineSpecifiedDocumentContextParameter/ram:ID). */
+	static String combineProfile(String xml) {
+	    java.util.regex.Matcher m = java.util.regex.Pattern
+	            .compile("GuidelineSpecifiedDocumentContextParameter>\\s*<[^>]*ID>([^<]+)<").matcher(xml);
+	    if (!m.find()) {
+	        return "EN16931";
+	    }
+	    String id = m.group(1).trim().toLowerCase();
+	    if (id.contains("xrechnung")) {
+	        return "XRECHNUNG";
+	    }
+	    if (id.contains("extended")) {
+	        return "EXTENDED";
+	    }
+	    if (id.contains("basicwl")) {
+	        return "BASICWL";
+	    }
+	    if (id.contains("minimum")) {
+	        return "MINIMUM";
+	    }
+	    if (id.contains("basic")) {
+	        return "BASIC";
+	    }
+	    return "EN16931";
+	}
+
+}

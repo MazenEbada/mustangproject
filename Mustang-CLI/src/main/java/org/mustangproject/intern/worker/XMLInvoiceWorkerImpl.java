@@ -128,6 +128,8 @@ public class XMLInvoiceWorkerImpl implements XMLInvoiceWorker {
         address.setGlnId(getElementValue(adresseElement, "ANP_GLN"));
         
         address.setPartyId(getElementValue(adresseElement, "ANP_PARTYID"));
+        address.setEndpointId(getElementValue(adresseElement, "ANP_ENDPOINTID"));
+        address.setEndpointScheme(getElementValue(adresseElement, "ANP_ENDPOINTSCHEME"));
         address.setCompanyName1(getElementValue(adresseElement, "FIRMA1"));
         address.setCompanyName2(getElementValue(adresseElement, "FIRMA2"));
         address.setCompanyName3(getElementValue(adresseElement, "FIRMA3"));
@@ -181,6 +183,8 @@ public class XMLInvoiceWorkerImpl implements XMLInvoiceWorker {
         address.setGlnId(getElementValue(adresseElement, "ANP_GLN"));
         
         address.setPartyId(getElementValue(adresseElement, "ANP_PARTYID"));
+        address.setEndpointId(getElementValue(adresseElement, "ANP_ENDPOINTID"));
+        address.setEndpointScheme(getElementValue(adresseElement, "ANP_ENDPOINTSCHEME"));
         address.setCompanyName1(getElementValue(adresseElement, "FIRMA1"));
         address.setCompanyName2(getElementValue(adresseElement, "FIRMA2"));
         address.setCompanyName3(getElementValue(adresseElement, "FIRMA3"));
@@ -238,6 +242,8 @@ public class XMLInvoiceWorkerImpl implements XMLInvoiceWorker {
             address.setGlnId(getElementValue(lAdresseElement, "ANP_GLN"));
             
             address.setPartyId(getElementValue(lAdresseElement, "ANP_PARTYID"));
+            address.setEndpointId(getElementValue(lAdresseElement, "ANP_ENDPOINTID"));
+            address.setEndpointScheme(getElementValue(lAdresseElement, "ANP_ENDPOINTSCHEME"));
             address.setCompanyName1(getElementValue(lAdresseElement, "FIRMA1"));
             address.setCompanyName2(getElementValue(lAdresseElement, "FIRMA2"));
             address.setCompanyName3(getElementValue(lAdresseElement, "FIRMA3"));
@@ -376,6 +382,8 @@ public class XMLInvoiceWorkerImpl implements XMLInvoiceWorker {
             address.setGlnId(getElementValue(rAdresseElement, "ANP_GLN"));
             
             address.setPartyId(getElementValue(rAdresseElement, "ANP_PARTYID"));
+            address.setEndpointId(getElementValue(rAdresseElement, "ANP_ENDPOINTID"));
+            address.setEndpointScheme(getElementValue(rAdresseElement, "ANP_ENDPOINTSCHEME"));
             address.setDuns(getElementValue(rAdresseElement, "DUNSNR"));
             address.setCompanyName1(getElementValue(rAdresseElement, "FIRMA1"));
             address.setCompanyName2(getElementValue(rAdresseElement, "FIRMA2"));
@@ -414,6 +422,8 @@ public class XMLInvoiceWorkerImpl implements XMLInvoiceWorker {
             // Kopieren aller Felder von customerAddress zu invoiceAddress
             invoiceAddress.setGlnId(customerAddress.getGlnId());
             invoiceAddress.setPartyId(customerAddress.getPartyId());
+            invoiceAddress.setEndpointId(customerAddress.getEndpointId());
+            invoiceAddress.setEndpointScheme(customerAddress.getEndpointScheme());
             invoiceAddress.setDuns(customerAddress.getDuns());
             invoiceAddress.setCompanyName1(customerAddress.getCompanyName1());
             invoiceAddress.setCompanyName2(customerAddress.getCompanyName2());

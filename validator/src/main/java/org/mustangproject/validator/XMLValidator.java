@@ -53,6 +53,8 @@ public class XMLValidator extends Validator {
 	private static final String ZUGEFERD_1_XSLT = "/xslt/ZUGFeRD_1p0.xslt";
 	private static final String EN16931_UBL_SCHEMATRON = "/xslt/en16931schematron/EN16931-UBL-validation.xslt";
 	private static final String OX10_COMFORT_XSLT = "/xslt/OX_10/comfort/SCRDMCCBDACIOMessageStructure_100pD20B_COMFORT.xslt";
+	// CUSTOM:TEK/MEB:19.11.2026: OpenPEPPOL BIS Billing 3.0 (nur mit enablePeppolRules)
+	private static final String PEPPOL_UBL_XSLT = "/xslt/peppol_3022/PEPPOL-EN16931-UBL.xslt";
 
 	protected String zfXML = "";
 	protected String filename = "";
@@ -61,6 +63,9 @@ public class XMLValidator extends Validator {
 	boolean disableNotices;
 	boolean disableArithmeticCheck;
 	boolean disableXRechnungXSDValidation;
+	// CUSTOM:TEK/MEB:19.11.2026: OpenPEPPOL-Regeln (BIS Billing 3.0) nur auf Wunsch, damit
+	// bestehende Pruefungen (z.B. Eingang E-EK) unveraendert bleiben.
+	boolean peppolRules;
 
 	public XMLValidator(ValidationContext ctx) {
 		super(ctx);
@@ -127,6 +132,14 @@ public class XMLValidator extends Validator {
 	 */
 	public void disableArithmeticCheck() {
 		disableArithmeticCheck = true;
+	}
+
+	/***
+	 * additionally apply the OpenPEPPOL BIS Billing 3.0 rules to UBL documents whose
+	 * CustomizationID names PEPPOL (CUSTOM:TEK/MEB:19.11.2026)
+	 */
+	public void enablePeppolRules() {
+		peppolRules = true;
 	}
 
 
@@ -299,6 +312,10 @@ public class XMLValidator extends Validator {
 					xsltFilename = XMLValidator.EN16931_UBL_SCHEMATRON;
 
 					mainSchematronSectionErrorTypeCode = 24;
+
+					if (peppolRules && contextProfile.contains("peppol.eu:2017:poacc:billing")) {
+						validateSchematron(zfXML, PEPPOL_UBL_XSLT, 24, ESeverity.error);
+					}
 
 					if (isXRechnung) {
 						validateSchematron(zfXML, xsltFilename, 24, ESeverity.error);

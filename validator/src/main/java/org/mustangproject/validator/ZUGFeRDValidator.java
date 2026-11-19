@@ -50,6 +50,7 @@ public class ZUGFeRDValidator {
 	protected long startTime; // we will calculate the duration, for this we need to remember the start time
 	protected boolean optionsRecognized;
 	protected boolean disableNotices;
+	protected boolean peppolRules; // CUSTOM:TEK/MEB:19.11.2026
 	protected boolean disableArithmeticCheck;
 	protected String signature;
 	protected boolean wasCompletelyValid; // overall result
@@ -125,6 +126,9 @@ public class ZUGFeRDValidator {
 				XMLValidator xv = new XMLValidator(context);
 				if (disableNotices) {
 					xv.disableNotices();
+				}
+				if (peppolRules) {
+					xv.enablePeppolRules();
 				}
 				if (disableArithmeticCheck) {
 					xv.disableArithmeticCheck();
@@ -339,6 +343,13 @@ public class ZUGFeRDValidator {
 	 */
 	public void disableNotices() {
 		disableNotices = true;
+	}
+
+	/***
+	 * also check OpenPEPPOL BIS Billing 3.0 rules for PEPPOL UBL (CUSTOM:TEK/MEB:19.11.2026)
+	 */
+	public void enablePeppolRules() {
+		peppolRules = true;
 	}
 
 	/***
