@@ -403,6 +403,9 @@ public class Main {
 	                case "COMBINE": // CUSTOM:TEK/MEB:19.11.2026: XML in bestehende PDF einbetten (PDF/A-3)
 	                	returnString = APplusActions.handleCombine(args);
 	                	break;
+	                case "SERVE": // CUSTOM:TEK/MEB:19.11.2026: dauerhafter Dienst (Zeilen-Protokoll, ERechnungServer)
+	                	ERechnungServer.serve();
+	                	return;
 	                default:
 	                    System.err.println("Error: Unknown custom action '" + args[1] + "'");
 	                    System.exit(1);
