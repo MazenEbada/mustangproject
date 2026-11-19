@@ -1334,22 +1334,24 @@ public class ZUGFeRD2PullProvider implements IXMLProvider {
 
 			if (discountTerms != null) {
 				paymentTermsXml += "<ram:ApplicableTradePaymentDiscountTerms>";
+				// CUSTOM:TEK/MEB:19.11.2026: Reihenfolge laut Schema (BasisDateTime, BasisPeriodMeasure,
+				// BasisAmount, CalculationPercent) und Skonto-Tage auch ohne Basisdatum, sonst gehen die
+				// Tage in EXTENDED verloren.
+				if (discountTerms.getBaseDate() != null) {
+					paymentTermsXml += "<ram:BasisDateTime>";
+					paymentTermsXml += DATE.udtFormat(discountTerms.getBaseDate());
+					paymentTermsXml += "</ram:BasisDateTime>";
+				}
+				if (discountTerms.getBasePeriodMeasure() > 0 && discountTerms.getBasePeriodUnitCode() != null) {
+					paymentTermsXml += "<ram:BasisPeriodMeasure unitCode=\"" + discountTerms.getBasePeriodUnitCode() + "\">"
+						+ discountTerms.getBasePeriodMeasure() + "</ram:BasisPeriodMeasure>";
+				}
 				final String basisAmount = currencyFormat(calc.getGrandTotal());
 				// MEB: currencyID-Attribut bewusst weggelassen (upstream: currencyID=trans.getCurrency()).
 				//paymentTermsXml += "<ram:BasisAmount currencyID=\"" + trans.getCurrency() + "\">" + basisAmount + "</ram:BasisAmount>";
 				paymentTermsXml += "<ram:BasisAmount>" + basisAmount + "</ram:BasisAmount>";
 				paymentTermsXml += "<ram:CalculationPercent>" + discountTerms.getCalculationPercentage().toString()
 					+ "</ram:CalculationPercent>";
-
-				if (discountTerms.getBaseDate() != null) {
-					final Date baseDate = discountTerms.getBaseDate();
-					paymentTermsXml += "<ram:BasisDateTime>";
-					paymentTermsXml += DATE.udtFormat(baseDate);
-					paymentTermsXml += "</ram:BasisDateTime>";
-
-					paymentTermsXml += "<ram:BasisPeriodMeasure unitCode=\"" + discountTerms.getBasePeriodUnitCode() + "\">"
-						+ discountTerms.getBasePeriodMeasure() + "</ram:BasisPeriodMeasure>";
-				}
 
 				paymentTermsXml += "</ram:ApplicableTradePaymentDiscountTerms>";
 			}
