@@ -75,6 +75,8 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
     private String invoiceXML;
     private String language;
     private String applusEinterface;
+    /** CUSTOM:TEK/MEB:19.11.2026: Schnittstelle "U" = XRechnung als UBL (intern wie "X", am Ende CII -> UBL). */
+    private boolean xrechnungUbl;
 
     /**
      * Konstruktor mit InternInvoice und Konvertierungsschlüsseln
@@ -86,6 +88,10 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
         this.internInvoice = internInvoice;
         this.conversionKeys = conversionKeys;
         this.applusEinterface = getInterface();
+        if ("U".equals(applusEinterface)) {
+            xrechnungUbl = true;
+            applusEinterface = "X";
+        }
     }
 
     /**
@@ -161,6 +167,8 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
         invoiceXML = new String(provider.getXML(), StandardCharsets.UTF_8);
         if ("P".equals(applusEinterface)) {
             invoiceXML = PeppolUBL.fromCII(invoiceXML);
+        } else if (xrechnungUbl) {
+            invoiceXML = PeppolUBL.fromCII(invoiceXML, PeppolUBL.XRECHNUNG_CUSTOMIZATION_ID);
         }
         if ("B".equals(applusEinterface) || "W".equals(applusEinterface) || "M".equals(applusEinterface)) {
             invoiceXML = ProfileReducer.reduce(invoiceXML, einterface);

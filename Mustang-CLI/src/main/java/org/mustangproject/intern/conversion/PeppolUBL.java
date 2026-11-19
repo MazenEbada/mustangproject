@@ -38,6 +38,10 @@ public final class PeppolUBL {
     public static final String CUSTOMIZATION_ID =
             "urn:cen.eu:en16931:2017#compliant#urn:fdc:peppol.eu:2017:poacc:billing:3.0";
 
+    /** CUSTOM:TEK/MEB:19.11.2026: XRechnung 3.0 in UBL-Syntax (Schnittstelle "U"). */
+    public static final String XRECHNUNG_CUSTOMIZATION_ID =
+            "urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0";
+
     private static final String CAC = "urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2";
     private static final String CBC = "urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2";
     private static final String RAM =
@@ -50,12 +54,16 @@ public final class PeppolUBL {
     }
 
     public static String fromCII(String ciiXml) throws Exception {
+        return fromCII(ciiXml, CUSTOMIZATION_ID);
+    }
+
+    public static String fromCII(String ciiXml, String customizationId) throws Exception {
         File in = File.createTempFile("peppol-cii", ".xml");
         File out = File.createTempFile("peppol-ubl", ".xml");
         try {
             Files.write(in.toPath(), ciiXml.getBytes(StandardCharsets.UTF_8));
             out.delete();
-            new CIIToUBL().convert(in, out, PROFILE_ID, CUSTOMIZATION_ID);
+            new CIIToUBL().convert(in, out, PROFILE_ID, customizationId);
             if (!out.exists() || out.length() == 0) {
                 throw new Exception("PEPPOL: Umwandlung CII -> UBL ohne Ergebnis.");
             }
