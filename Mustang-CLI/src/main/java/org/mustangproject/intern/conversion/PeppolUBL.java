@@ -67,7 +67,8 @@ public final class PeppolUBL {
             if (!out.exists() || out.length() == 0) {
                 throw new Exception("PEPPOL: Umwandlung CII -> UBL ohne Ergebnis.");
             }
-            return fix(ciiXml, new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8));
+            return fix(ciiXml, new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8),
+                    CUSTOMIZATION_ID.equals(customizationId));
         } finally {
             in.delete();
             out.delete();
@@ -82,6 +83,14 @@ public final class PeppolUBL {
      * Ändert nichts, wenn keiner der Fälle vorliegt.
      */
     static String fix(String ciiXml, String ublXml) throws Exception {
+        return fix(ciiXml, ublXml, false);
+    }
+
+    /**
+     * @param peppol PEPPOL BIS 3.0 (nicht XRechnung-UBL): zusaetzlich PEPPOL-EN16931-R002 - hoechstens eine
+     *               Dokument-Notiz, ausser Verkaeufer und Kaeufer sind beide in DE (CUSTOM:TEK/MEB:20.11.2026, 12a, A-03).
+     */
+    static String fix(String ciiXml, String ublXml, boolean peppol) throws Exception {
         DocumentBuilderFactory f = DocumentBuilderFactory.newInstance();
         f.setNamespaceAware(true);
         f.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
@@ -134,6 +143,9 @@ public final class PeppolUBL {
                 changed = true;
             }
         }
+        if (peppol && mergeNotes(root)) {
+            changed = true;
+        }
         if (!changed) {
             return ublXml;
         }
@@ -142,6 +154,45 @@ public final class PeppolUBL {
         StringWriter w = new StringWriter();
         t.transform(new DOMSource(ubl), new StreamResult(w));
         return w.toString();
+    }
+
+    /**
+     * PEPPOL-EN16931-R002: mehrere cbc:Note (Bemerkung, Registerangaben #REG# ...) zu einer Notiz zusammenfassen,
+     * wenn nicht beide Parteien in DE sind. Die Themen-Kennung (#XXX#) ist eine deutsche Konvention und
+     * entfaellt dabei; der Text bleibt vollstaendig erhalten (Zeilen getrennt).
+     */
+    static boolean mergeNotes(Element root) {
+        List<Element> notes = children(root, CBC, "Note");
+        if (notes.size() < 2) {
+            return false;
+        }
+        if ("DE".equals(partyCountry(root, "AccountingSupplierParty"))
+                && "DE".equals(partyCountry(root, "AccountingCustomerParty"))) {
+            return false;
+        }
+        StringBuilder all = new StringBuilder();
+        for (Element n : notes) {
+            String t = text(n).replaceFirst("^#[A-Z]{3}#", "").trim();
+            if (!t.isEmpty()) {
+                if (all.length() > 0) {
+                    all.append("\n");
+                }
+                all.append(t);
+            }
+        }
+        notes.get(0).setTextContent(all.toString());
+        for (int i = 1; i < notes.size(); i++) {
+            root.removeChild(notes.get(i));
+        }
+        return true;
+    }
+
+    private static String partyCountry(Element root, String party) {
+        Element p = first(root, CAC, party);
+        p = p == null ? null : first(p, CAC, "Party");
+        p = p == null ? null : first(p, CAC, "PostalAddress");
+        p = p == null ? null : first(p, CAC, "Country");
+        return p == null ? "" : text(first(p, CBC, "IdentificationCode")).toUpperCase();
     }
 
     private static List<Element> children(Element parent, String ns, String name) {

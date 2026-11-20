@@ -314,7 +314,10 @@ public class ZUGFeRD2PullProvider implements IXMLProvider {
 	protected String getItemTotalAllowanceChargeStr(IZUGFeRDAllowanceCharge allowance, IAbsoluteValueProvider item) {
 		String percentage = "";
 		String chargeIndicator = "false";
-		boolean isEN16931 = profile == Profiles.getByName("XRechnung") || profile == Profiles.getByName("EN16931");
+		// CUSTOM:TEK/MEB:20.11.2026 (12a, A-08): BASIC erlaubt Prozent, Basis, Grund und Code an der Position
+		// (BT-138..BT-140, BR-42/BR-CO-23) wie EN16931 - vorher fehlten sie und die BASIC-Rechnung war ungueltig.
+		boolean isEN16931 = profile == Profiles.getByName("XRechnung") || profile == Profiles.getByName("EN16931")
+			|| profile == Profiles.getByName("BASIC");
 		if (isEN16931 || profile == Profiles.getByName("Extended")) {
 			if (allowance.getPercent() != null) {
 				percentage += "<ram:CalculationPercent>" + vatFormat(allowance.getPercent()) + "</ram:CalculationPercent>";
@@ -977,7 +980,9 @@ public class ZUGFeRD2PullProvider implements IXMLProvider {
 							"<ram:CategoryTradeTax>" +
 							"<ram:TypeCode>VAT</ram:TypeCode>" +
 							"<ram:CategoryCode>" + amount.getCategoryCode() + "</ram:CategoryCode>" +
-							"<ram:RateApplicablePercent>" + vatFormat(amount.getApplicablePercent()) + "</ram:RateApplicablePercent>" +
+							// CUSTOM:TEK/MEB:20.11.2026 (12a, A-11): kein Satz bei "nicht steuerbar" (BR-O-06/07)
+							(TaxCategoryCodeTypeConstants.UNTAXEDSERVICE.equals(amount.getCategoryCode()) ? "" :
+							"<ram:RateApplicablePercent>" + vatFormat(amount.getApplicablePercent()) + "</ram:RateApplicablePercent>") +
 							"</ram:CategoryTradeTax>" +
 							"</ram:SpecifiedTradeAllowanceCharge>");
 					}
@@ -1041,7 +1046,9 @@ public class ZUGFeRD2PullProvider implements IXMLProvider {
 							"<ram:CategoryTradeTax>" +
 							"<ram:TypeCode>VAT</ram:TypeCode>" +
 							"<ram:CategoryCode>" + amount.getCategoryCode() + "</ram:CategoryCode>" +
-							"<ram:RateApplicablePercent>" + vatFormat(amount.getApplicablePercent()) + "</ram:RateApplicablePercent>" +
+							// CUSTOM:TEK/MEB:20.11.2026 (12a, A-11): kein Satz bei "nicht steuerbar" (BR-O-06/07)
+							(TaxCategoryCodeTypeConstants.UNTAXEDSERVICE.equals(amount.getCategoryCode()) ? "" :
+							"<ram:RateApplicablePercent>" + vatFormat(amount.getApplicablePercent()) + "</ram:RateApplicablePercent>") +
 							"</ram:CategoryTradeTax>" +
 							"</ram:SpecifiedTradeAllowanceCharge>");
 					}

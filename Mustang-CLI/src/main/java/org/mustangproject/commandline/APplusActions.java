@@ -164,7 +164,7 @@ public class APplusActions {
 	 * CUSTOM:TEK/MEB:19.11.2026: Haengt eine ZUGFeRD-XML an eine bestehende PDF und hebt sie auf
 	 * PDF/A-3 an - wie Mogler/src/AmcZugferdCombine.java, aber mit einstellbarem Producer/Creator
 	 * (fuer die Cloud-Variante). Der Seiteninhalt wird nicht angefasst; die anschliessende
-	 * Validierung gehoert dazu (PDF/A nur, wenn die Schriften schon eingebettet sind).
+	 * Validierung gehoert dazu. Nicht eingebettete Standardschriften werden vorher eingebettet (PdfFontEmbedder).
 	 *
 	 * --input-pdf, --input-xml, --target-pdf, optional --producer, --creator.
 	 * @return Profilname, das in die PDF geschrieben wurde
@@ -187,7 +187,13 @@ public class APplusActions {
 	    }
 	    ZUGFeRDExporterFromA1 exporter = new ZUGFeRDExporterFromA1();
 	    exporter.ignorePDFAErrors();
-	    exporter.load(new File(pdf).getAbsolutePath());
+	    // CUSTOM:TEK/MEB:20.11.2026 (12a, A-12): nicht eingebettete Standardschriften vorher einbetten (PDF/A-3)
+	    byte[] embedded = PdfFontEmbedder.embedStandardFonts(new File(pdf));
+	    if (embedded != null) {
+	        exporter.load(embedded);
+	    } else {
+	        exporter.load(new File(pdf).getAbsolutePath());
+	    }
 	    exporter.setProducer(producer == null ? "E-Rechnung" : producer)
 	            .setCreator(creator == null ? "E-Rechnung" : creator)
 	            .setZUGFeRDVersion(2)

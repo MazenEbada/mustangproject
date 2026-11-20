@@ -384,10 +384,9 @@
 
   <xsl:template match="*|@*" mode="binary">
     <xsl:param name="identifier"/>    
-    <fo:basic-link>
-      <xsl:attribute name="external-destination">url(embedded-file:<xsl:value-of select="encode-for-uri($identifier)"/>)</xsl:attribute>
-      <xsl:value-of select="$identifier"/>
-    </fo:basic-link>
+    <!-- CUSTOM:TEK/MEB:20.11.2026 (12a, A-09): kein Link auf die Anlage - FOP erzeugt dafuer eine JavaScript-Aktion,
+         die PDF/A-3 verbietet (ISO 19005-3 6.5.1). Der Name genuegt; die Anlage steht in der E-Rechnung. -->
+    <fo:inline><xsl:value-of select="$identifier"/></fo:inline>
   </xsl:template>
 
   <xsl:template match="*|@*" mode="binary-declaration">

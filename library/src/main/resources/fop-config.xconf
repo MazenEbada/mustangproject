@@ -50,6 +50,21 @@
         <font kerning="yes" embed-url="classpath:fonts/SourceSerifPro-BoldIt.ttf" embedding-mode="subset">
           <font-triplet name="SourceSerifPro" style="italic" weight="700"/>
         </font>
+        <!-- CUSTOM:TEK/MEB:20.11.2026 (12a, A-13): Ausweichschriften fuer Arabisch und CJK -->
+        <font kerning="yes" embed-url="classpath:fonts/NotoSansArabic-Regular.ttf" embedding-mode="subset">
+          <font-triplet name="NotoSansArabic" style="normal" weight="400"/>
+          <font-triplet name="NotoSansArabic" style="italic" weight="400"/>
+        </font>
+        <font kerning="yes" embed-url="classpath:fonts/NotoSansArabic-Bold.ttf" embedding-mode="subset">
+          <font-triplet name="NotoSansArabic" style="normal" weight="700"/>
+          <font-triplet name="NotoSansArabic" style="italic" weight="700"/>
+        </font>
+        <font kerning="yes" embed-url="classpath:fonts/DroidSansFallbackFull.ttf" embedding-mode="subset">
+          <font-triplet name="DroidSansFallback" style="normal" weight="400"/>
+          <font-triplet name="DroidSansFallback" style="italic" weight="400"/>
+          <font-triplet name="DroidSansFallback" style="normal" weight="700"/>
+          <font-triplet name="DroidSansFallback" style="italic" weight="700"/>
+        </font>
       </fonts>
       <output-profile>classpath:AdobeCompat-v2.icc</output-profile>
     </renderer>

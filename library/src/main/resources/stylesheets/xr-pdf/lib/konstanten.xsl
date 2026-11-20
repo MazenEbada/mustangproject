@@ -12,8 +12,9 @@
   == Schriften
   =========================================================================== -->
 
-  <xsl:variable name="fontSans">SourceSansPro</xsl:variable>
-  <xsl:variable name="fontSerif">SourceSerifPro</xsl:variable>
+  <!-- CUSTOM:TEK/MEB:20.11.2026 (12a, A-13): Ausweichschriften je Zeichen (Arabisch, CJK) -->
+  <xsl:variable name="fontSans">SourceSansPro,NotoSansArabic,DroidSansFallback</xsl:variable>
+  <xsl:variable name="fontSerif">SourceSerifPro,NotoSansArabic,DroidSansFallback</xsl:variable>
 
   <xsl:variable name="amount-picture" select="xrf:_('amount-format')"/>
   <xsl:variable name="percentage-picture" select="xrf:_('percentage-format')"/>
