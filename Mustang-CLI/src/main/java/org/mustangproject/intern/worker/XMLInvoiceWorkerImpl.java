@@ -1120,7 +1120,10 @@ public class XMLInvoiceWorkerImpl implements XMLInvoiceWorker {
         
         // UST-Kategorie
         tax.setTaxCategory(getElementValue(element, "USTKATEGORIE"));
-        
+
+        // CUSTOM:AMC/MEB:23.11.2026:V2.9 - Steuertext (USTSATZPOS.STDTXT_AR, Span ANP_USTTEXT)
+        tax.setTaxText(getElementValue(element, "ANP_USTTEXT"));
+
         // UST-Satz
         String taxRateStr = getElementValue(element, "UST");
         if (taxRateStr != null && !taxRateStr.isEmpty()) {

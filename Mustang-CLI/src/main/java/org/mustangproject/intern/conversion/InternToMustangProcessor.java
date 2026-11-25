@@ -77,6 +77,8 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
     private String applusEinterface;
     /** CUSTOM:TEK/MEB:19.11.2026: Schnittstelle "U" = XRechnung als UBL (intern wie "X", am Ende CII -> UBL). */
     private boolean xrechnungUbl;
+    // CUSTOM:AMC/MEB:23.11.2026:V2.9 - Steuertexte der uebernommenen Positionen (USTSATZPOS.STDTXT_AR), je Text einmal
+    private final java.util.Set<String> taxTexts = new java.util.LinkedHashSet<>();
 
     /**
      * Konstruktor mit InternInvoice und Konvertierungsschlüsseln
@@ -233,6 +235,7 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
      */
     public void generateMustangInvoice() throws Exception {
         mustangInvoice = new Invoice();
+        taxTexts.clear();
 
         // Step 1: Extract Invoice Metadata
         extractInvoiceMetadata(mustangInvoice);
@@ -286,6 +289,7 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
         // Step 9: Extract Additional Notes
         Map<String, String> textFields = extractTextFields();
         integrateTexts(mustangInvoice, textFields);
+        integrateTaxTexts(mustangInvoice);
         integrateBuyerAccountingReference(mustangInvoice, textFields);
 
         // Step 10: Rundungsausgleich bei verrechneten Anzahlungen (BT-114)
@@ -1419,9 +1423,13 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
             }
             
             product.setVATPercent(taxPercent);
+            String taxText = amounts != null && amounts.getTax() != null ? amounts.getTax().getTaxText() : null;
             applyTaxCategory(product,
                     amounts != null && amounts.getTax() != null ? amounts.getTax().getTaxCategory() : null,
-                    taxPercent);
+                    taxPercent, taxText);
+            if (taxText != null && !taxText.trim().isEmpty()) {
+                taxTexts.add(taxText.trim());
+            }
 
             // Einheit mappen
             String unitType = internItem.getUnit();
@@ -1537,8 +1545,12 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
      * Z, E, AE, K und G. Alles andere (Tippfehler, O, L, M, S bei 0 %) bleibt
      * beim bisherigen Verhalten - lieber Z als eine Kategorie, deren
      * Folgeregeln (BR-O-*, BR-S-05) die Rechnung ungueltig machen.
+     *
+     * <p>CUSTOM:AMC/MEB:23.11.2026:V2.9 - Befreiungsgrund (BT-120) ist der Steuertext
+     * aus dem USt-Satz (USTSATZPOS.STDTXT_AR, Sprache der Rechnung), wie er auf der
+     * gedruckten Rechnung steht. Nur ohne Steuertext gilt der feste Text.
      */
-    private void applyTaxCategory(Product product, String category, BigDecimal taxPercent) {
+    private void applyTaxCategory(Product product, String category, BigDecimal taxPercent, String taxText) {
         if (category == null || category.trim().isEmpty()) {
             return;
         }
@@ -1551,31 +1563,58 @@ public class InternToMustangProcessor implements OutboundInvoiceProcessor {
             return;
         }
         boolean de = language == null || language.isEmpty() || language.equalsIgnoreCase("de");
+        String reason;
         switch (code) {
             case "Z":
                 product.setTaxCategoryCode(code);
-                break;
+                return;
             case "E":
-                product.setTaxCategoryCode(code);
-                product.setTaxExemptionReason(de ? "Steuerfreier Umsatz" : "Exempt from VAT");
+                reason = de ? "Steuerfreier Umsatz" : "Exempt from VAT";
                 break;
             case "AE":
-                product.setTaxCategoryCode(code);
                 product.setTaxExemptionReasonCode("VATEX-EU-AE");
-                product.setTaxExemptionReason(de ? "Steuerschuldnerschaft des Leistungsempfängers" : "Reverse charge");
+                reason = de ? "Steuerschuldnerschaft des Leistungsempfängers" : "Reverse charge";
                 break;
             case "K":
-                product.setTaxCategoryCode(code);
                 product.setTaxExemptionReasonCode("VATEX-EU-IC");
-                product.setTaxExemptionReason(de ? "Steuerfreie innergemeinschaftliche Lieferung" : "Intra-community supply");
+                reason = de ? "Steuerfreie innergemeinschaftliche Lieferung" : "Intra-community supply";
                 break;
             case "G":
-                product.setTaxCategoryCode(code);
                 product.setTaxExemptionReasonCode("VATEX-EU-G");
-                product.setTaxExemptionReason(de ? "Steuerfreie Ausfuhrlieferung" : "Export outside the EU");
+                reason = de ? "Steuerfreie Ausfuhrlieferung" : "Export outside the EU";
                 break;
             default:
-                break;
+                return;
+        }
+        product.setTaxCategoryCode(code);
+        product.setTaxExemptionReason(taxText != null && !taxText.trim().isEmpty() ? taxText.trim() : reason);
+    }
+
+    /**
+     * CUSTOM:AMC/MEB:23.11.2026:V2.9 - Steuertexte als Kopf-Hinweis (IncludedNote, TXD).
+     *
+     * <p>Der Rechnungsdruck gibt je Position den Steuertext des USt-Satzes aus
+     * (USTSATZPOS.STDTXT_AR). Als Befreiungsgrund (BT-120) traegt die E-Rechnung ihn
+     * nur bei E/AE/K/G; bei S und Z gibt es dort kein Feld. Deshalb steht jeder
+     * Text zusaetzlich einmal als Steuerhinweis im Kopf - ausser er ist schon
+     * wortgleich als anderer Hinweis enthalten (z.B. im Standardtext).
+     */
+    private void integrateTaxTexts(Invoice mustangInvoice) {
+        if (taxTexts.isEmpty()) {
+            return;
+        }
+        java.util.Set<String> vorhanden = new java.util.HashSet<>();
+        if (mustangInvoice.getNotesWithSubjectCode() != null) {
+            for (IncludedNote note : mustangInvoice.getNotesWithSubjectCode()) {
+                if (note.getContent() != null) {
+                    vorhanden.add(note.getContent().trim());
+                }
+            }
+        }
+        for (String text : taxTexts) {
+            if (vorhanden.add(text)) {
+                mustangInvoice.addNotes(Collections.singletonList(IncludedNote.taxNote(text)));
+            }
         }
     }
 
