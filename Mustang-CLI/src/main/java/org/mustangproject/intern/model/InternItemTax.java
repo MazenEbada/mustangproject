@@ -14,6 +14,8 @@ public class InternItemTax {
     private BigDecimal taxAmount;
     private String taxCategory;
     private BigDecimal taxRate;
+    // CUSTOM:AMC/MEB:23.11.2026:V2.9 - Steuertext aus dem USt-Satz (USTSATZPOS.STDTXT_AR), wie im Rechnungsdruck
+    private String taxText;
 
     // Getter und Setter
     public BigDecimal getTaxAmount() {
@@ -38,5 +40,13 @@ public class InternItemTax {
 
     public void setTaxRate(BigDecimal taxRate) {
         this.taxRate = taxRate;
+    }
+
+    public String getTaxText() {
+        return taxText;
+    }
+
+    public void setTaxText(String taxText) {
+        this.taxText = taxText;
     }
 }
